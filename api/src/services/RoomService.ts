@@ -203,6 +203,24 @@ export class RoomService {
     return { room, round };
   }
 
+  async assertFacilitator(code: string, participantId: string): Promise<void> {
+    const room = await this.loadRoom(code);
+    this.requireFacilitator(room, participantId);
+  }
+
+  async getJiraFeedUrl(code: string, participantId: string): Promise<string | null> {
+    const room = await this.loadRoom(code);
+    this.requireFacilitator(room, participantId);
+    return room.jiraFeedUrl ?? null;
+  }
+
+  async setJiraFeedUrl(code: string, participantId: string, url: string): Promise<void> {
+    const room = await this.loadRoom(code);
+    this.requireFacilitator(room, participantId);
+    room.jiraFeedUrl = url;
+    await this.persist(room);
+  }
+
   async updateStory(code: string, participantId: string, raw: unknown): Promise<Story> {
     const room = await this.loadRoom(code);
     this.requireFacilitator(room, participantId);
@@ -380,7 +398,26 @@ export class RoomService {
         );
       }
     }
-    return { title, description };
+    const story: Story = { title, description };
+    const { key: rawKey, url: rawUrl } = raw as {
+      key?: unknown;
+      url?: unknown;
+    };
+    if (typeof rawKey === "string") {
+      const key = rawKey.trim();
+      if (key.length > 20) {
+        throw new ApiError("INVALID_REQUEST", 400, "Story key must be at most 20 characters.");
+      }
+      if (key) story.key = key;
+    }
+    if (typeof rawUrl === "string") {
+      const url = rawUrl.trim();
+      if (url.length > 500) {
+        throw new ApiError("INVALID_REQUEST", 400, "Story link must be at most 500 characters.");
+      }
+      if (url) story.url = url;
+    }
+    return story;
   }
 
   private touch(room: Room): void {

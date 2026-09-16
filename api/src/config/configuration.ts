@@ -6,6 +6,15 @@ export interface Configuration {
   roomExpiryHours: number;
   defaultDeck: CardValue[];
   webPubSubConnectionString?: string;
+  jiraClientId?: string;
+  jiraClientSecret?: string;
+  jiraRedirectUri?: string;
+  jiraSite?: string;
+  jiraMock: boolean;
+  /** Base URL of the Jira site, e.g. https://hmcts.atlassian.net */
+  jiraHost?: string;
+  /** Project key prefix used to filter imported issues, e.g. PAY */
+  jiraProjectKey?: string;
 }
 
 export function loadConfiguration(
@@ -28,5 +37,12 @@ export function loadConfiguration(
     roomExpiryHours,
     defaultDeck,
     webPubSubConnectionString: env.WEB_PUBSUB_CONNECTION_STRING || undefined,
+    jiraClientId: env.JIRA_CLIENT_ID || undefined,
+    jiraClientSecret: env.JIRA_CLIENT_SECRET || undefined,
+    jiraRedirectUri: env.JIRA_REDIRECT_URI || undefined,
+    jiraSite: env.JIRA_SITE || undefined,
+    jiraMock: env.JIRA_MOCK === "1" || env.JIRA_MOCK?.toLowerCase() === "true",
+    jiraHost: env.JIRA_HOST?.trim() || undefined,
+    jiraProjectKey: (env.JIRA_PROJECT_KEY ?? env.KEY)?.trim() || undefined,
   };
 }

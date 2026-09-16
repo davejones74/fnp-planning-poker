@@ -32,6 +32,10 @@ export interface Participant {
 export interface Story {
   title: string;
   description: string;
+  /** Jira issue key, when imported (e.g. "FPB-42"). */
+  key?: string;
+  /** Link back to the source issue. */
+  url?: string;
 }
 
 export interface Round {
@@ -51,6 +55,8 @@ export interface Room {
   participants: Map<string, Participant>;
   currentRound: Round;
   deck: CardValue[];
+  /** Last Jira search/filter link used to import stories into this room. */
+  jiraFeedUrl?: string;
 }
 
 export interface PublicParticipant {

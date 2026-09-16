@@ -8,6 +8,10 @@ export type ApiErrorCode =
   | "INVALID_CARD"
   | "VOTING_CLOSED"
   | "CONFLICT"
+  | "INVALID_FEED"
+  | "JIRA_AUTH_REQUIRED"
+  | "JIRA_NOT_CONFIGURED"
+  | "JIRA_ERROR"
   | "INTERNAL_ERROR";
 
 export class ApiError extends Error {

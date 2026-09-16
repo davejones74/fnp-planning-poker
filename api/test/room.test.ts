@@ -183,4 +183,27 @@ describe("configuration sanity", () => {
     assert.deepEqual(config.adminUsers, ["dave@x.com", "alice@x.com"]);
     assert.equal(config.defaultDeck.length, 11);
   });
+
+  it("reads the Jira host and project key for the import links", async () => {
+    const { loadConfiguration } = await import("../src/config/configuration.ts");
+    const viaKey = loadConfiguration({
+      JIRA_HOST: " https://hmcts.atlassian.net ",
+      KEY: "PAY",
+    } as NodeJS.ProcessEnv);
+    assert.equal(viaKey.jiraHost, "https://hmcts.atlassian.net");
+    assert.equal(viaKey.jiraProjectKey, "PAY");
+
+    const viaExplicit = loadConfiguration({
+      JIRA_PROJECT_KEY: "FNP",
+      KEY: "PAY",
+    } as NodeJS.ProcessEnv);
+    assert.equal(viaExplicit.jiraProjectKey, "FNP");
+  });
+
+  it("leaves the Jira import config unset when not provided", async () => {
+    const { loadConfiguration } = await import("../src/config/configuration.ts");
+    const config = loadConfiguration({} as NodeJS.ProcessEnv);
+    assert.equal(config.jiraHost, undefined);
+    assert.equal(config.jiraProjectKey, undefined);
+  });
 });

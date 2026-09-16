@@ -26,6 +26,11 @@ import { getParticipants } from "./functions/getParticipants.ts";
 import { negotiate } from "./functions/negotiate.ts";
 import { me } from "./functions/me.ts";
 import { health } from "./functions/health.ts";
+import { jiraAuthorize } from "./functions/jiraAuthorize.ts";
+import { jiraCallback } from "./functions/jiraCallback.ts";
+import { jiraStatus } from "./functions/jiraStatus.ts";
+import { jiraFeed } from "./functions/jiraFeed.ts";
+import { clientConfig } from "./functions/config.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = normalize(join(__dirname, "..", ".."));
@@ -61,6 +66,11 @@ const routes: Route[] = [
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/participants\/remove$/, handler: wrap(removeParticipant) },
   { method: "GET", pattern: /^\/api\/negotiate$/, handler: wrap(negotiate) },
   { method: "POST", pattern: /^\/api\/negotiate$/, handler: wrap(negotiate) },
+  { method: "GET", pattern: /^\/api\/jira\/authorize$/, handler: wrap(jiraAuthorize) },
+  { method: "GET", pattern: /^\/api\/jira\/callback$/, handler: wrap(jiraCallback) },
+  { method: "GET", pattern: /^\/api\/jira\/status$/, handler: wrap(jiraStatus) },
+  { method: "POST", pattern: /^\/api\/jira\/feed$/, handler: wrap(jiraFeed) },
+  { method: "GET", pattern: /^\/api\/config$/, handler: wrap(clientConfig) },
   { method: "GET", pattern: /^\/api\/me$/, handler: wrap(me) },
   { method: "GET", pattern: /^\/health$/, handler: wrap(health) },
 ];
@@ -119,7 +129,7 @@ async function toServerResponse(
       : {}),
   });
   const response = await handler(request);
-  res.writeHead(response.status);
+  res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
   res.end(await response.text());
 }
 

@@ -6,6 +6,8 @@ interface UpdateStoryBody {
   participantId?: unknown;
   title?: unknown;
   description?: unknown;
+  key?: unknown;
+  url?: unknown;
 }
 
 export async function updateStory(request: Request): Promise<Response> {
@@ -15,6 +17,8 @@ export async function updateStory(request: Request): Promise<Response> {
   const story = await rooms.updateStory(code, participantId, {
     title: body?.title,
     description: body?.description,
+    key: body?.key,
+    url: body?.url,
   });
   return jsonResponse(200, { ok: true, story });
 }

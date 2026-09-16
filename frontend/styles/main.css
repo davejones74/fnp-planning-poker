@@ -67,8 +67,85 @@ body {
   width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
-  padding: 28px 16px 64px;
+  padding: 28px 16px 128px;
   flex: 1;
+}
+
+/* ---------- Footer ---------- */
+.app-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 104px;
+  background: var(--panel);
+  border-top: 1px solid var(--panel-border);
+  z-index: 40;
+}
+
+.app-footer-inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 16px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  height: 64px;
+  gap: 8px;
+}
+
+.footer-brand .brand-logo {
+  max-height: 64px;
+  width: auto;
+}
+
+[data-theme="dark"] .footer-brand .brand-logo {
+  background: #ffffff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  box-sizing: content-box;
+}
+
+.footer-brand .brand-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.footer-brand .brand-logo + .brand-text {
+  display: none;
+}
+
+.footer-quote {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+  padding: 0 24px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.5;
+  max-width: 100%;
+}
+
+.footer-quote .footer-quote-author {
+  font-style: normal;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .footer-quote {
+    display: none;
+  }
 }
 
 /* ---------- Header ---------- */
@@ -280,6 +357,11 @@ button.danger:hover {
 
 .home .form-field {
   text-align: left;
+}
+
+.home form button {
+  display: block;
+  margin: 0 auto;
 }
 
 .create-zone {
@@ -855,6 +937,81 @@ button.danger:hover {
   display: flex;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* ---------- Jira import ---------- */
+.jira-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  margin-top: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.jira-dialog-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.jira-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.jira-hint.ok {
+  color: var(--ok);
+}
+
+.import-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 12px;
+  border: 1px dashed var(--border-card);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.import-drop:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.jira-story-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.jira-story {
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.jira-story:hover {
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.jira-story:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ---------- Toast ---------- */

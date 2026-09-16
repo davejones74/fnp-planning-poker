@@ -10,6 +10,7 @@ Lightweight web-based **Scrum / Planning Poker** estimation app.
 - Others join with a display name and share the join link
 - Joining again from the same browser (or after a refresh) restores the same session
 - Facilitator can set/edit the story (e.g. JIRA-123 + description)
+- **Import stories** — the facilitator uploads a Jira CSV (or RSS/XML) export; issues are parsed in the browser (the file never leaves the machine), shown as a pick list, and each imported story links back to its Jira ticket via the configured site. Live Jira fetch (OAuth) is implemented but disabled in the UI until credentials are provided
 - Default deck: **XS, S, M, L, XL, XXL, ?, coffee** (coffee = break; see `shared/decks.ts` for the fibonacci alternative)
 - Participants pick a card; only a ✓ (voted) status is visible to others
 - Facilitator reveals the cards; a new round clears all selections
@@ -96,6 +97,11 @@ run with `node --env-file=.env api/src/server.ts`.
 | `ADMIN_USERS` | empty | Comma-separated identities allowed to administer (Phase 1: informational) |
 | `WEB_PUBSUB_CONNECTION_STRING` | empty | Azure Web PubSub (used from Phase 2; empty = in-memory) |
 | `WEBSITE_HOSTNAME` | empty | Azure-assigned hostname (used to build absolute URLs) |
+| `JIRA_HOST` | empty | Base site for imported issues; a key links to `<JIRA_HOST>/browse/<KEY>` |
+| `KEY` / `JIRA_PROJECT_KEY` | empty | Project prefix used to filter imported issues (`KEY=PAY`); `JIRA_PROJECT_KEY` wins when both are set |
+| `JIRA_CLIENT_ID` / `JIRA_CLIENT_SECRET` | empty | Jira Cloud OAuth app credentials for the (currently disabled) live fetch |
+| `JIRA_REDIRECT_URI` | `http://localhost:8080/api/jira/callback` | Callback URL of the OAuth app; must match what the browser hits |
+| `JIRA_MOCK` | empty | `1` returns canned stories and a fake consent page so the UI works without an Atlassian app |
 
 ## API
 
@@ -112,8 +118,13 @@ with the matching HTTP status. Room codes use the alphabet
 | `POST` | `/api/rooms/{code}/vote` | `{ participantId, card }` — card must be in the room's deck |
 | `POST` | `/api/rooms/{code}/reveal` | Facilitator-only; publishes `cards.revealed` |
 | `POST` | `/api/rooms/{code}/round` | Facilitator-only; clears selections, new round |
-| `PUT` | `/api/rooms/{code}/story` | Facilitator-only; `{ participantId, title, description }` |
+| `PUT` | `/api/rooms/{code}/story` | Facilitator-only; `{ participantId, title, description, key?, url? }` |
 | `POST` | `/api/rooms/{code}/participants/remove` | Facilitator-only; `{ participantId, targetParticipantId }` |
+| `GET` | `/api/config` | Non-secret client config `{ jiraHost, jiraProjectKey }` used by the import dialog |
+| `GET` | `/api/jira/authorize?room=&returnTo=` | Opens the Atlassian consent screen in a popup (mock consent page when `JIRA_MOCK=1`) |
+| `GET` | `/api/jira/callback` | OAuth callback; exchanges the code and tells the opener via `postMessage` |
+| `GET` | `/api/jira/status?code=&participantId=` | Whether a Jira connection exists and the room's last-used feed link |
+| `POST` | `/api/jira/feed` | Facilitator-only; `{ roomCode, participantId, feedUrl? }` → `{ ok, stories, feedUrl }`; omitted `feedUrl` reuses the room's last-used link |
 | `GET` | `/api/negotiate` | Returns `{ url }` for the WebSocket, e.g. `ws://host/ws` |
 | `GET` | `/api/me` | `{ authenticated, isAdmin, identity }` (placeholder until auth) |
 | `GET` | `/health` | Availability probe |
@@ -121,6 +132,45 @@ with the matching HTTP status. Room codes use the alphabet
 For anything with `participantId`, the server re-validates the participant exists in
 the room and the sender is allowed to act (e.g. only the facilitator may reveal). The
 client is never trusted.
+
+## Importing stories
+
+"Import stories" (visible to the facilitator in the story panel) parses a **Jira export
+entirely in the browser** — the file is never uploaded:
+
+1. In Jira, export the saved filter / board as **CSV** (`Export` → `Export CSV (all
+   fields)`) or grab its **RSS/XML** feed, then pick the file in the import dialog.
+2. The format is sniffed automatically (`frontend/src/import/`). CSV columns are located
+   by header (`Summary`, `Issue key`, `Description`), quotes/newlines/CRLF are handled,
+   and Jira wiki markup is flattened to plain text (descriptions truncated to 500 chars).
+   For XML both the per-issue XML view and the RSS feed are understood. Key comes from a
+   `<key>` element, a `/browse/KEY` link or the title.
+3. A filter's RSS is an **activity feed** (it lists comments). Those comment items are
+   skipped, and when nothing usable is found the dialog suggests the CSV export instead.
+4. Fetched issues render under "Pick a story to import"; selecting one becomes the current
+   story. Its panel key links to `<JIRA_HOST>/browse/<KEY>`, and `KEY` (or
+   `JIRA_PROJECT_KEY`) filters the list to a single project.
+
+Live fetch (below) is disabled in the UI for now; the file path needs no Atlassian
+credentials.
+
+## Jira import (live OAuth fetch — disabled)
+
+The OAuth version of the import is implemented but hidden behind the disabled UI: it
+authenticates with **Jira Cloud OAuth 2.0 (3-legged)**.
+
+1. The facilitator pastes a link from Jira — a saved filter (`.../issues/?filter=18527`),
+   a JQL search (`.../issues/?jql=...`), or its base64 form — into the import dialog.
+2. If no app token exists yet, a popup opens to Atlassian's consent screen. The
+   callback page (`/api/jira/callback`) exchanges the code and reports back to the room
+   via `postMessage`; a 10-minute state token guards the callback.
+3. Server-side, the link is parsed into `site` + JQL/filter, and stories are fetched
+   from the Jira API with a refresh-token retry on expiry.
+
+Phase 1 uses one shared app-level token (the last consent wins), and the OAuth app
+must be registered at developer.atlassian.com (free). For a no-credentials test drive
+set `JIRA_MOCK=1` — the authorize endpoint shows a mock consent page and the feed
+returns canned stories, so the whole UI flow works end to end.
 
 ## Realtime protocol (`/ws`)
 

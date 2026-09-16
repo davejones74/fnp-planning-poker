@@ -12,7 +12,7 @@ export class ApiClientError extends Error {
   }
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
@@ -52,6 +52,8 @@ export interface CreatedRoom {
 export interface StoryPayload {
   title: string;
   description: string;
+  key?: string;
+  url?: string;
 }
 
 export interface NegotiateResult {

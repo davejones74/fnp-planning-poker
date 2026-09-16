@@ -13,7 +13,7 @@
     "build": "npm run typecheck && npm run build:frontend",
     "start": "npm run build:frontend && node api/src/server.ts",
     "dev": "npm run build:frontend && node api/src/server.ts",
-    "test": "node --test \"api/test/*.test.ts\""
+    "test": "node --test \"api/test/*.test.ts\" \"frontend/test/*.test.ts\""
   },
   "dependencies": {
     "ws": "^8.18.0"

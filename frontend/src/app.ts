@@ -1,5 +1,6 @@
 import { setRouter, el, clear } from "./components/dom.ts";
 import { renderHeader } from "./components/header.ts";
+import { renderFooter } from "./components/footer.ts";
 import { renderHome } from "./components/home.ts";
 import { renderRoomPage } from "./components/room.ts";
 import { appState } from "./state/app-state.ts";
@@ -10,9 +11,11 @@ if (app) {
 
   const headerRoot = el("header", { class: "app-header" });
   const contentRoot = el("main", { class: "app-content" });
-  app.append(headerRoot, contentRoot);
+  const footerRoot = el("footer", { class: "app-footer" });
+  app.append(headerRoot, contentRoot, footerRoot);
 
   renderHeader(headerRoot);
+  renderFooter(footerRoot);
 
   async function route(): Promise<void> {
     clear(contentRoot);

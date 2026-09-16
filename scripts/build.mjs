@@ -24,10 +24,7 @@ cpSync(join(sourceFrontend, "styles"), join(outDir, "styles"), { recursive: true
 
 const publicDir = join(sourceFrontend, "public");
 if (existsSync(publicDir)) {
-  for (const entry of ["favicon.svg"]) {
-    const from = join(publicDir, entry);
-    if (existsSync(from)) cpSync(from, join(outDir, entry));
-  }
+  cpSync(publicDir, outDir, { recursive: true });
 }
 
 console.log("frontend built -> dist/frontend");

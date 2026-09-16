@@ -1,7 +1,17 @@
-import { el, clear, inputValue, showToast } from "./dom.ts";
+import { el, clear, showToast, inputValue } from "./dom.ts";
+import { configApi, type ClientConfig } from "../api/config.ts";
+import { prepareImport } from "../import/index.ts";
+import type { ImportResult } from "../import/import-types.ts";
 import type { RoomState } from "../state/room-state.ts";
 
 type TabId = "active" | "completed" | "all";
+
+type StoryExtra = { key?: string; url?: string };
+type SaveStory = (
+  title: string,
+  description: string,
+  extra?: StoryExtra,
+) => Promise<void> | void;
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: "active", label: "Active Stories" },
@@ -19,7 +29,7 @@ function tabCount(tab: TabId, hasStory: boolean): number {
 export function renderStoryPanel(
   root: HTMLElement,
   state: RoomState,
-  onSave: (title: string, description: string) => Promise<void> | void,
+  onSave: SaveStory,
 ): void {
   let tab: TabId = "active";
 
@@ -63,7 +73,7 @@ export function renderStoryPanel(
 function renderList(
   state: RoomState,
   tab: TabId,
-  onSave: (title: string, description: string) => Promise<void> | void,
+  onSave: SaveStory,
   haveStory: boolean,
 ): HTMLElement {
   const list = el("div", { class: "story-list" });
@@ -77,6 +87,7 @@ function renderList(
     list.append(el("p", { class: "story-empty", text: "No active story yet." }));
     if (state.isFacilitator()) {
       list.append(renderAddButton(list, state, onSave));
+      list.append(renderImportButton(list, onSave));
     }
     return list;
   }
@@ -88,11 +99,18 @@ function renderList(
   const key = colon >= 0 ? story.title.slice(0, colon).trim() : "Story";
   const title = colon >= 0 ? story.title.slice(colon + 1).trim() : story.title;
 
+  const keyEl = story.url
+    ? el("a", {
+        class: "story-key",
+        href: story.url,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        text: key,
+      })
+    : el("span", { class: "story-key", text: key });
+
   const row = el("article", { class: "story-row selected" });
-  row.append(
-    el("span", { class: "story-key", text: key }),
-    el("span", { class: "story-title", text: title }),
-  );
+  row.append(keyEl, el("span", { class: "story-title", text: title }));
   if (story.description) {
     row.append(el("p", { class: "story-desc", text: story.description }));
   }
@@ -100,6 +118,7 @@ function renderList(
 
   if (state.isFacilitator()) {
     list.append(renderEditButton(list, state, onSave));
+    list.append(renderImportButton(list, onSave));
   }
 
   return list;
@@ -108,7 +127,7 @@ function renderList(
 function renderAddButton(
   list: HTMLElement,
   state: RoomState,
-  onSave: (title: string, description: string) => Promise<void> | void,
+  onSave: SaveStory,
 ): HTMLElement {
   const button = el("button", { class: "ghost story-edit-btn", type: "button", text: "Add story" });
   button.addEventListener("click", () => {
@@ -121,7 +140,7 @@ function renderAddButton(
 function renderEditButton(
   list: HTMLElement,
   state: RoomState,
-  onSave: (title: string, description: string) => Promise<void> | void,
+  onSave: SaveStory,
 ): HTMLElement {
   const button = el("button", { class: "ghost story-edit-btn", type: "button", text: "Edit story" });
   button.addEventListener("click", () => {
@@ -133,7 +152,7 @@ function renderEditButton(
 
 function renderEditor(
   state: RoomState,
-  onSave: (title: string, description: string) => Promise<void> | void,
+  onSave: SaveStory,
 ): HTMLElement {
   const form = el("form", { class: "story-editor" });
   const story = state.room.story;
@@ -174,4 +193,130 @@ function renderEditor(
 
   cancelButton.addEventListener("click", () => form.remove());
   return form;
+}
+
+function renderImportButton(
+  list: HTMLElement,
+  onSave: SaveStory,
+): HTMLElement {
+  const button = el("button", {
+    class: "ghost story-edit-btn",
+    type: "button",
+    text: "Import stories",
+  });
+  button.addEventListener("click", () => {
+    button.remove();
+    list.append(openImportDialog(onSave));
+  });
+  return button;
+}
+
+function openImportDialog(onSave: SaveStory): HTMLElement {
+  const dialog = el("div", { class: "jira-dialog" });
+  const title = el("p", { class: "jira-dialog-title", text: "Import stories" });
+  const hint = el("p", {
+    class: "jira-hint",
+    text: "Choose a Jira CSV or RSS export.",
+  });
+
+  const drop = el("label", { class: "import-drop", text: "Choose file…" });
+  const file = el("input", {
+    type: "file",
+    accept: ".csv,.xml,.rss,.txt,text/csv,text/xml,application/xml",
+  }) as HTMLInputElement;
+  file.hidden = true;
+  drop.append(file);
+
+  const note = el("p", {
+    class: "jira-hint",
+    text: "Live Jira fetch is disabled (no credentials configured). Issue keys link to the configured Jira site via JIRA_HOST and KEY.",
+  });
+
+  const buttons = el("div", { class: "editor-buttons" });
+  const cancelButton = el("button", { type: "button", class: "ghost", text: "Close" });
+  buttons.append(cancelButton);
+  dialog.append(title, hint, drop, note, buttons);
+
+  const close = () => dialog.remove();
+  cancelButton.addEventListener("click", close);
+
+  let config: ClientConfig = { jiraHost: null, jiraProjectKey: null };
+  void configApi
+    .client()
+    .then((loaded) => {
+      config = loaded;
+    })
+    .catch(() => {});
+
+  function renderStories(result: ImportResult): void {
+    clear(dialog);
+    const heading = el("p", {
+      class: "jira-dialog-title",
+      text: result.stories.length > 0 ? "Pick a story to import" : "No stories found",
+    });
+    dialog.append(heading);
+
+    const storyList = el("div", { class: "jira-story-list" });
+    if (result.stories.length > 0) {
+      for (const story of result.stories) {
+        const item = el("button", {
+          type: "button",
+          class: "jira-story",
+          text: story.title,
+        });
+        item.title = story.url ?? "";
+        item.addEventListener("click", async () => {
+          item.disabled = true;
+          try {
+            await onSave(story.title, story.description, {
+              key: story.key,
+              url: story.url,
+            });
+            close();
+          } catch {
+            item.disabled = false;
+          }
+        });
+        storyList.append(item);
+      }
+    } else {
+      const message =
+        result.source === "xml"
+          ? "This RSS looks like a filter activity/comment feed, not the issue list. Use the CSV export from Jira instead."
+          : "No usable issues were found in the CSV.";
+      storyList.append(el("p", { class: "story-empty", text: message }));
+    }
+    if (result.skipped > 0) {
+      storyList.append(
+        el("p", {
+          class: "jira-hint",
+          text: `Skipped ${result.skipped} row/item${result.skipped === 1 ? "" : "s"} with no usable issue key.`,
+        }),
+      );
+    }
+    dialog.append(storyList);
+
+    const done = el("button", { type: "button", class: "ghost", text: "Close" });
+    done.addEventListener("click", close);
+    dialog.append(done);
+  }
+
+  file.addEventListener("change", () => {
+    const selected = file.files?.[0];
+    if (!selected) return;
+    hint.textContent = "Reading " + selected.name + "…";
+    void selected
+      .text()
+      .then((text) => {
+        const result = prepareImport(text, config);
+        renderStories(result);
+      })
+      .catch((err: unknown) => {
+        hint.textContent =
+          "Import failed: " +
+          (err instanceof Error ? err.message : "could not read the file.");
+      });
+  });
+
+  return dialog;
 }

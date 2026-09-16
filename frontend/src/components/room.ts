@@ -191,9 +191,14 @@ async function enterRoom(
         showToast("Could not vote: " + format(err), true);
       }
     });
-    renderStoryPanel(storyRoot, state, async (storyTitle, description) => {
+    renderStoryPanel(storyRoot, state, async (storyTitle, description, extra) => {
       try {
-        await roomsApi.updateStory(code, { title: storyTitle, description });
+        await roomsApi.updateStory(code, {
+          title: storyTitle,
+          description,
+          key: extra?.key,
+          url: extra?.url,
+        });
         await refresh();
       } catch (err) {
         showToast("Could not update story: " + format(err), true);
