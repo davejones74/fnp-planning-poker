@@ -1,0 +1,27 @@
+{
+  "name": "fnp-planning-poker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lightweight web-based Scrum Planning Poker application.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:frontend": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && npm run build:frontend",
+    "start": "npm run build:frontend && node api/src/server.ts",
+    "dev": "npm run build:frontend && node api/src/server.ts",
+    "test": "node --test \"api/test/*.test.ts\""
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.5.13",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}
