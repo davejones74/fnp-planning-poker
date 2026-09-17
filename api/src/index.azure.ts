@@ -153,8 +153,10 @@ app.http("negotiate", {
   handler: toAzure(wrap(negotiate)),
 });
 
+// OPTIONS must be listed so Web PubSub's CloudEvents abuse-protection
+// handshake reaches the handler instead of the Functions host answering 404.
 app.http("pubsubEvents", {
-  methods: ["GET", "POST"],
+  methods: ["GET", "POST", "OPTIONS"],
   authLevel: "anonymous",
   route: "pubsub/events",
   handler: toAzure(wrap(pubsubEvents)),

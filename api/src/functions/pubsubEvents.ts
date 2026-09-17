@@ -4,56 +4,78 @@ import { rooms } from "../services/index.ts";
 const SYS_CONNECTED = "azure.webpubsub.sys.connected";
 const SYS_DISCONNECTED = "azure.webpubsub.sys.disconnected";
 
-interface CloudEvent {
-  type?: unknown;
-  data?: { userId?: unknown };
-}
+const PRESENCE: Record<
+  string,
+  (roomCode: string, participantId: string) => Promise<void>
+> = {
+  [SYS_CONNECTED]: (roomCode, participantId) => rooms.handleConnect(roomCode, participantId),
+  [SYS_DISCONNECTED]: (roomCode, participantId) => rooms.handleDisconnect(roomCode, participantId),
+};
 
 /**
- * Azure Web PubSub upstream event handler (hub's event-handler URL template
- * points here). The service validates the handler URL once at setup time
- * (`aeg-event-type: validation`) and afterwards delivers connect/disconnect
- * CloudEvents, which drive participant presence:
+ * Azure Web PubSub upstream event handler (the hub's event-handler URL template
+ * points here). It drives participant presence:
  *
  *   - `userId` was set by negotiate to `<roomCode>:<participantId>`, so a
- *     disconnected event marks exactly that participant offline and every
- *     other tab in the room hears `participant.updated`.
+ *     disconnect marks exactly that participant offline and every other tab in
+ *     the room hears `participant.updated`.
+ *
+ * Web PubSub delivers events as CloudEvents in *binary* format: the metadata is
+ * in `ce-*` request headers (`ce-type`, `ce-userId`) and the body is empty JSON.
+ * The service also validates every registered URL with a CloudEvents
+ * abuse-protection OPTIONS request, which must answer with
+ * `WebHook-Allowed-Origin`; without it no events are ever delivered.
  */
 export async function pubsubEvents(request: Request): Promise<Response> {
-  const eventType = request.headers.get("aeg-event-type") ?? "";
+  // CloudEvents abuse-protection handshake from the Web PubSub service.
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "WebHook-Allowed-Origin": "*",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+      },
+    });
+  }
 
-  if (eventType === "validation") {
-    const code = await validationCode(request);
-    return new Response(code, {
+  // Event Grid style validation (kept for compatibility; Web PubSub uses the
+  // OPTIONS handshake above instead).
+  if (request.headers.get("aeg-event-type") === "validation") {
+    return new Response(await validationCode(request), {
       status: 200,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
 
-  if (eventType !== "notification") {
-    // The service may probe the endpoint with a plain GET/HEAD.
-    if (request.method === "GET" || request.method === "HEAD") {
-      return new Response("ok", { status: 200 });
-    }
-    return jsonResponse(400, {
-      error: { code: "BAD_EVENT", message: "Unsupported event type." },
-    });
+  const ceType = request.headers.get("ce-type");
+  if (ceType) {
+    const userId = request.headers.get("ce-userid") ?? "";
+    await dispatch(ceType, userId);
+    return jsonResponse(200, {});
   }
 
-  const events = await readCloudEvents(request);
-  for (const event of events) {
+  // Fallback for JSON batch payloads (Event Grid style / tests).
+  for (const event of await readCloudEvents(request)) {
+    const type = typeof event.type === "string" ? event.type : "";
     const userId = event.data?.userId;
-    if (typeof userId !== "string") continue;
-    const parsed = parseUserId(userId);
-    if (!parsed) continue;
-    const { roomCode, participantId } = parsed;
-    if (event.type === SYS_DISCONNECTED) {
-      await rooms.handleDisconnect(roomCode, participantId);
-    } else if (event.type === SYS_CONNECTED) {
-      await rooms.handleConnect(roomCode, participantId);
-    }
+    if (typeof userId === "string") await dispatch(type, userId);
   }
   return jsonResponse(200, {});
+}
+
+async function dispatch(type: string, userId: string): Promise<void> {
+  const handler = PRESENCE[type];
+  if (!handler) return;
+  const parsed = parseUserId(userId);
+  if (!parsed) return;
+  await handler(parsed.roomCode, parsed.participantId);
+}
+
+interface CloudEvent {
+  type?: unknown;
+  data?: { userId?: unknown };
 }
 
 async function readCloudEvents(request: Request): Promise<CloudEvent[]> {
