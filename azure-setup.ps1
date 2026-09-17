@@ -24,7 +24,12 @@
     Name of the resource group to create. Defaults to "planning-poker".
 
 .PARAMETER Location
-    Azure region, e.g. uksouth. Defaults to uksouth.
+    Azure region for Cosmos DB and Web PubSub, e.g. uksouth. Defaults to uksouth.
+
+.PARAMETER SwaLocation
+    Azure region for the Static Web App. Static Web Apps are only available in a
+    few regions (e.g. eastus2), which can differ from Cosmos/Web PubSub.
+    Defaults to eastus2.
 
 .PARAMETER Hub
     Web PubSub hub name the app connects through. Defaults to fnp.
@@ -36,10 +41,16 @@ param(
     [string]$NamePrefix = "fnppoker",
     [string]$ResourceGroup = "planning-poker",
     [string]$Location = "uksouth",
+    [string]$SwaLocation = "eastus2",
     [string]$Hub = "fnp"
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
+
+# az provider register writes a "Registering is still on-going" WARNING to stderr
+# even on success. Under $ErrorActionPreference="Stop" PowerShell 5.1 escalates
+# that stderr output to a terminating error, aborting the script. We keep
+# "Continue" and rely on the explicit $LASTEXITCODE checks after each az call.
 
 function Get-Name([string]$suffix) {
     $n = "$NamePrefix$suffix"
@@ -53,6 +64,32 @@ if ($LASTEXITCODE -ne 0) {
     throw "Not signed in. Run 'az login' first."
 }
 
+# Some commands (webpubsub) ship as CLI extensions. Install them silently so the
+# script never blocks on an interactive "install now?" prompt.
+Write-Host "Installing required Azure CLI extensions..." -ForegroundColor Cyan
+az extension add --name webpubsub --allow-preview true --yes --output none 2>$null
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to install the 'webpubsub' CLI extension. Run 'az extension add -n webpubsub --allow-preview true -y' manually."
+}
+
+# Fresh personal subscriptions often have their resource providers unregistered;
+# creating a resource before the provider is "Registered" fails with
+# MissingSubscriptionRegistration. Register each and wait for it to finish.
+$providers = @("Microsoft.DocumentDB", "Microsoft.SignalRService", "Microsoft.Web")
+foreach ($provider in $providers) {
+    Write-Host "Registering resource provider $provider..." -ForegroundColor Cyan
+    az provider register --namespace $provider --output none 2>$null
+    $deadline = (Get-Date).AddMinutes(5)
+    $state = ""
+    while ($state -ne "Registered" -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 10
+        $state = az provider show --namespace $provider --query registrationState --output tsv
+    }
+    if ($state -ne "Registered") {
+        throw "Resource provider $provider did not finish registering in 5 minutes. Re-run this script."
+    }
+}
+
 Write-Host "Creating resource group $ResourceGroup..." -ForegroundColor Cyan
 az group create --name $ResourceGroup --location $Location --output none
 if ($LASTEXITCODE -ne 0) { throw "Failed to create resource group." }
@@ -61,32 +98,48 @@ $cosmosName  = Get-Name "cosmos"
 $wpsName     = Get-Name "wps"
 $swaName     = Get-Name "swa"
 
-Write-Host "Creating Cosmos DB Table API account $cosmosName..." -ForegroundColor Cyan
-az cosmosdb create `
-    --name $cosmosName `
-    --resource-group $ResourceGroup `
-    --locations "$Location=0" `
-    --capabilities EnableTable `
-    --output none
-if ($LASTEXITCODE -ne 0) { throw "Failed to create Cosmos account." }
+az cosmosdb show --name $cosmosName --resource-group $ResourceGroup --output none 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Cosmos account $cosmosName already exists, skipping creation." -ForegroundColor DarkGray
+} else {
+    Write-Host "Creating Cosmos DB Table API account $cosmosName..." -ForegroundColor Cyan
+    az cosmosdb create `
+        --name $cosmosName `
+        --resource-group $ResourceGroup `
+        --locations regionName=$Location failoverPriority=0 `
+        --capabilities EnableTable `
+        --enable-free-tier `
+        --output none
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create Cosmos account." }
+}
 
-Write-Host "Creating Web PubSub $wpsName..." -ForegroundColor Cyan
-az webpubsub create `
-    --name $wpsName `
-    --resource-group $ResourceGroup `
-    --location $Location `
-    --sku Free_F1 `
-    --output none
-if ($LASTEXITCODE -ne 0) { throw "Failed to create Web PubSub." }
+az webpubsub show --name $wpsName --resource-group $ResourceGroup --output none 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Web PubSub $wpsName already exists, skipping creation." -ForegroundColor DarkGray
+} else {
+    Write-Host "Creating Web PubSub $wpsName..." -ForegroundColor Cyan
+    az webpubsub create `
+        --name $wpsName `
+        --resource-group $ResourceGroup `
+        --location $Location `
+        --sku Free_F1 `
+        --output none
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create Web PubSub." }
+}
 
-Write-Host "Creating Static Web App $swaName..." -ForegroundColor Cyan
-az staticwebapp create `
-    --name $swaName `
-    --resource-group $ResourceGroup `
-    --location $Location `
-    --sku Free `
-    --output none
-if ($LASTEXITCODE -ne 0) { throw "Failed to create Static Web App." }
+az staticwebapp show --name $swaName --resource-group $ResourceGroup --output none 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Static Web App $swaName already exists, skipping creation." -ForegroundColor DarkGray
+} else {
+    Write-Host "Creating Static Web App $swaName..." -ForegroundColor Cyan
+    az staticwebapp create `
+        --name $swaName `
+        --resource-group $ResourceGroup `
+        --location $SwaLocation `
+        --sku Free `
+        --output none
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create Static Web App." }
+}
 
 Write-Host "Collecting connection strings..." -ForegroundColor Cyan
 $cosmosCs = az cosmosdb keys list `
