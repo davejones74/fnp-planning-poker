@@ -79,18 +79,6 @@ export function renderPlayersPanel(
     );
     row.append(main);
 
-    const vote = el("span", { class: "player-vote" });
-    if (revealed) {
-      vote.className = "player-vote revealed";
-      if (p.selectedCard === "coffee") vote.append(coffeeIcon(22));
-      else vote.textContent = p.selectedCard ?? "–";
-    } else if (p.hasSelected) {
-      const check = checkIcon(16);
-      check.classList.add("vote-check");
-      vote.append(check);
-    }
-    row.append(vote);
-
     if (isFacilitator && p.id !== state.myParticipantId) {
       const remove = el("button", {
         class: "player-remove",
@@ -105,6 +93,18 @@ export function renderPlayersPanel(
       });
       row.append(remove);
     }
+
+    const vote = el("span", { class: "player-vote" });
+    if (revealed) {
+      vote.className = "player-vote revealed";
+      if (p.selectedCard === "coffee") vote.append(coffeeIcon(22));
+      else vote.textContent = p.selectedCard ?? "–";
+    } else if (p.hasSelected) {
+      const check = checkIcon(18);
+      check.classList.add("vote-check");
+      vote.append(check);
+    }
+    row.append(vote);
 
     list.append(row);
   }

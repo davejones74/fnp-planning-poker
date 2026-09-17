@@ -723,7 +723,6 @@ button.danger:hover {
 }
 
 .player-remove {
-  margin-left: 10px;
   padding: 4px 9px;
   font-size: 12px;
   font-weight: 500;
@@ -749,7 +748,8 @@ button.danger:hover {
 }
 
 .player-vote .vote-check {
-  color: #9aa5b1;
+  color: var(--ok);
+  stroke-width: 2.6;
 }
 
 .player-vote.revealed {
