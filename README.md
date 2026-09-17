@@ -2,7 +2,15 @@
 
 Lightweight web-based **Scrum / Planning Poker** estimation app.
 
-**Phase 1 (current): complete local MVP.** Runs on Node's built-in HTTP + WebSocket server with an in-memory room store. No database, no auth, no cloud dependencies.
+**Phase 1: complete local MVP.** Runs on Node's built-in HTTP + WebSocket server with an in-memory room store. No database, no auth, no cloud dependencies.
+
+**Phase 2 (roadmap → on disk): free Azure hosting.** The local handlers already
+run as an Azure Functions v4 bundle (`api/dist/index.js` via `npm run build:api`);
+rooms persist to Cosmos DB Table API when `COSMOS_TABLE_CONNECTION_STRING` is set;
+realtime negotiates an Azure Web PubSub endpoint, and the frontend
+`RealtimeClient` speaks the `json.webpubsub.azure.v1` subprotocol. A GitHub Actions
+workflow (`azure-setup.ps1` + `.github/workflows/azure-static-web-apps.yml`)
+deploys the stack to Azure Static Web Apps (Free plan). See "Deploying to Azure" below.
 
 ## Features
 
@@ -95,7 +103,9 @@ run with `node --env-file=.env api/src/server.ts`.
 | `ROOM_EXPIRY_HOURS` | `24` | Rooms are auto-expired after this long without activity |
 | `DEFAULT_DECK` | `fandp` | Deck key from `shared/decks.ts` (`fandp` = XS…coffee, or `fibonacci`) |
 | `ADMIN_USERS` | empty | Comma-separated identities allowed to administer (Phase 1: informational) |
-| `WEB_PUBSUB_CONNECTION_STRING` | empty | Azure Web PubSub (used from Phase 2; empty = in-memory) |
+| `WEB_PUBSUB_CONNECTION_STRING` | empty | Azure Web PubSub (empty = in-memory) |
+| `WEB_PUBSUB_HUB` | `fnp` | Web PubSub hub name all rooms connect through |
+| `COSMOS_TABLE_CONNECTION_STRING` | empty | Cosmos DB Table API connection string; empty = in-memory `RoomRepository` |
 | `WEBSITE_HOSTNAME` | empty | Azure-assigned hostname (used to build absolute URLs) |
 | `JIRA_HOST` | empty | Base site for imported issues; a key links to `<JIRA_HOST>/browse/<KEY>` |
 | `KEY` / `JIRA_PROJECT_KEY` | empty | Project prefix used to filter imported issues (`KEY=PAY`); `JIRA_PROJECT_KEY` wins when both are set |
@@ -220,20 +230,39 @@ environments per PR come for free on the SWA free plan.
 
 ### Phase 2 work items
 
-1. **Functions host** — add `api/package.json` + `@azure/functions` entry so SWA
-   managed Functions can run the existing handlers (they already match the
-   `(request) => Response` shape).
-2. **Durable repository** — `CosmosTableRoomRepository` implementing `RoomRepository`
-   (swap in `api/src/services/index.ts`).
-3. **Web PubSub realtime** — `negotiate` returns the Azure endpoint + token; server
-   goes serverless (no `ws` server, no in-memory PubSub); the frontend
-   `RealtimeClient` speaks the `json.webpubsub.azure.v1` subprotocol with per-room
-   groups; presence driven by connect/disconnect CloudEvents.
-4. **Auth** — SWA `staticwebapp.config.json` provider config + real `me()`; identity
-   `displayName` flows into room creation/join.
-5. **CI/CD** — GitHub Actions workflow + preview environments.
-6. **Frontend** — `roomsApi.negotiate()` already returns `{ url }`; extend it to carry
-   the token and endpoint for the Azure client.
+- [x] 1. **Functions host** — `api/package.json` + `@azure/functions` entry; `scripts/build-api.mjs`
+  bundles all handlers into `api/dist/index.js`, so SWA managed Functions run them as-is.
+- [x] 2. **Durable repository** — `CosmosTableRoomRepository` implementing `RoomRepository`
+  (swap in `api/src/services/index.ts`).
+- [x] 3. **Web PubSub realtime** — `negotiate` returns the Azure endpoint + token; the frontend
+  `RealtimeClient` speaks the `json.webpubsub.azure.v1` subprotocol (join group, envelope
+  parsing, pings, renegotiation on reconnect). Local dev still uses the in-process `ws` server.
+- [ ] 4. **Auth** — SWA built-in auth provider config + real `me()`; identity `displayName`
+  flows into room creation/join. (Not started — out of scope until asked.)
+- [x] 5. **CI/CD** — `.github/workflows/azure-static-web-apps.yml` builds and deploys on push
+  to `master`; PR previews come free with the SWA Free plan.
+- [x] 6. **Frontend negotiate** — `roomsApi.negotiate(code, participantId)` returns
+  `{ url, protocol, group }`, parsed by the Azure `RealtimeClient`.
+
+### Deploying to Azure ($0/mo)
+
+1. Run `./azure-setup.ps1` in Azure Cloud Shell (PowerShell) — it creates the resource
+   group, a Cosmos DB Table API account, a Web PubSub **Free_F1** instance and a Static
+   Web App, wires the connection strings into the SWA app settings
+   (`COSMOS_TABLE_CONNECTION_STRING`, `WEB_PUBSUB_CONNECTION_STRING`, `WEB_PUBSUB_HUB`),
+   and prints the SWA **deployment token**.
+2. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**
+   named `AZURE_STATIC_WEB_APPS_API_TOKEN` with that token as the value
+   (do **not** commit the token).
+3. Push to `master`. `.github/workflows/azure-static-web-apps.yml` runs
+   `npm ci && npm run build` (typecheck + bundle both sides) and deploys
+   `dist/frontend` + `api` via `Azure/static-web-apps-deploy`.
+
+The SWA **Free** plan (2026) includes the managed Functions API (1M executions/mo),
+100 GB bandwidth/mo and 3 preview environments. Web PubSub F1 caps at 20 concurrent
+connections / 20k messages/day, and Cosmos free tier at 1000 RU/s / 25 GB — a small
+squad room stays comfortably inside all of them. Rooms expire after `ROOM_EXPIRY_HOURS`
+of inactivity (default 24h), keeping Cosmos usage tiny.
 
 ### Phase 3 (only if it grows past free caps)
 

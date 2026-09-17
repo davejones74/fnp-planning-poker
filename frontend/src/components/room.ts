@@ -235,9 +235,16 @@ async function enterRoom(
   // Realtime
   async function connectWs(): Promise<void> {
     try {
-      const { url } = await roomsApi.negotiate();
+      const { url, protocol, group } = await roomsApi.negotiate(
+        code,
+        session.participantId,
+      );
       const client = new RealtimeClient({
         url,
+        protocol,
+        group,
+        renegotiate: () =>
+          roomsApi.negotiate(code, session.participantId).then((result) => result.url),
         onEvent(evt) {
           state.applyEvent(evt);
           renderAll();

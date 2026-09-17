@@ -9,8 +9,9 @@
   },
   "scripts": {
     "build:frontend": "node scripts/build.mjs",
+    "build:api": "node scripts/build-api.mjs",
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && npm run build:frontend",
+    "build": "npm run typecheck && npm run build:frontend && npm run build:api",
     "start": "npm run build:frontend && node api/src/server.ts",
     "dev": "npm run build:frontend && node api/src/server.ts",
     "test": "node --test \"api/test/*.test.ts\" \"frontend/test/*.test.ts\""
@@ -19,6 +20,9 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@azure/data-tables": "^13.3.0",
+    "@azure/functions": "^4.16.5",
+    "@azure/web-pubsub": "^1.1.4",
     "@types/node": "^24.0.0",
     "@types/ws": "^8.5.13",
     "esbuild": "^0.25.0",

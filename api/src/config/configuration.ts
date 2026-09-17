@@ -6,6 +6,10 @@ export interface Configuration {
   roomExpiryHours: number;
   defaultDeck: CardValue[];
   webPubSubConnectionString?: string;
+  /** Web PubSub hub name all rooms connect through. */
+  webPubSubHub: string;
+  /** Cosmos DB Table API connection string; empty keeps the in-memory store. */
+  cosmosTableConnectionString?: string;
   jiraClientId?: string;
   jiraClientSecret?: string;
   jiraRedirectUri?: string;
@@ -37,6 +41,9 @@ export function loadConfiguration(
     roomExpiryHours,
     defaultDeck,
     webPubSubConnectionString: env.WEB_PUBSUB_CONNECTION_STRING || undefined,
+    webPubSubHub: env.WEB_PUBSUB_HUB?.trim() || "fnp",
+    cosmosTableConnectionString:
+      env.COSMOS_TABLE_CONNECTION_STRING || undefined,
     jiraClientId: env.JIRA_CLIENT_ID || undefined,
     jiraClientSecret: env.JIRA_CLIENT_SECRET || undefined,
     jiraRedirectUri: env.JIRA_REDIRECT_URI || undefined,

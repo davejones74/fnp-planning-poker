@@ -1,0 +1,21 @@
+{
+  "name": "fnp-planning-poker-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node ../scripts/build-api.mjs",
+    "prestart": "npm run build",
+    "start": "func start",
+    "start:host": "func start"
+  },
+  "dependencies": {
+    "@azure/data-tables": "^13.3.0",
+    "@azure/functions": "^4.16.5",
+    "@azure/web-pubsub": "^1.1.4"
+  }
+}

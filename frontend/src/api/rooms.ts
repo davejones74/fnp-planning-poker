@@ -58,6 +58,10 @@ export interface StoryPayload {
 
 export interface NegotiateResult {
   url: string;
+  /** Present when the server negotiated an Azure Web PubSub endpoint. */
+  protocol?: "json.webpubsub.azure.v1";
+  /** The room group to join when protocol is the Azure subprotocol. */
+  group?: string;
 }
 
 export const roomsApi = {
@@ -126,8 +130,9 @@ export const roomsApi = {
     });
   },
 
-  negotiate(): Promise<NegotiateResult> {
-    return request<NegotiateResult>("/api/negotiate");
+  negotiate(code: string, participantId: string): Promise<NegotiateResult> {
+    const query = new URLSearchParams({ roomCode: code, participantId });
+    return request<NegotiateResult>(`/api/negotiate?${query.toString()}`);
   },
 };
 
