@@ -3,6 +3,7 @@ import { CosmosTableRoomRepository } from "./CosmosTableRoomRepository.ts";
 import { InMemoryPubSubService } from "./InMemoryPubSubService.ts";
 import { InMemoryRoomRepository } from "./InMemoryRoomRepository.ts";
 import { RoomService } from "./RoomService.ts";
+import { WebPubSubPubSubService } from "./WebPubSubPubSubService.ts";
 import { JiraClient } from "./jira.ts";
 
 /**
@@ -15,7 +16,12 @@ export const configuration = loadConfiguration();
 export const roomRepository = configuration.cosmosTableConnectionString
   ? new CosmosTableRoomRepository(configuration.cosmosTableConnectionString)
   : new InMemoryRoomRepository();
-export const realtime = new InMemoryPubSubService();
+export const realtime = configuration.webPubSubConnectionString
+  ? new WebPubSubPubSubService(
+      configuration.webPubSubConnectionString,
+      configuration.webPubSubHub,
+    )
+  : new InMemoryPubSubService();
 export const rooms = new RoomService(roomRepository, realtime, {
   deck: configuration.defaultDeck,
   roomExpiryHours: configuration.roomExpiryHours,

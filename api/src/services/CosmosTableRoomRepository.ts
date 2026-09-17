@@ -4,7 +4,7 @@ import type { RoomRepository } from "./RoomRepository.ts";
 interface RoomEntity {
   partitionKey: string;
   rowKey: string;
-  id: string;
+  roomId: string;
   code: string;
   createdAt: string;
   expiresAt: string;
@@ -31,7 +31,7 @@ export function toEntity(room: Room): RoomEntity {
   return {
     partitionKey: PARTITION_KEY,
     rowKey: room.code,
-    id: room.id,
+    roomId: room.id,
     code: room.code,
     createdAt: room.createdAt,
     expiresAt: room.expiresAt,
@@ -49,7 +49,7 @@ export function fromEntity(entity: RoomEntity): Room {
     participants.set(participant.id, participant);
   }
   const room: Room = {
-    id: entity.id,
+    id: entity.roomId,
     code: entity.code,
     createdAt: entity.createdAt,
     expiresAt: entity.expiresAt,

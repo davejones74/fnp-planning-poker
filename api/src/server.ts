@@ -12,6 +12,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { wrap, type HttpHandler } from "./shared/http.ts";
 import { rooms, realtime } from "./services/index.ts";
+import { InMemoryPubSubService } from "./services/InMemoryPubSubService.ts";
 import type { ClientMessage } from "../../shared/types.ts";
 
 import { createRoom } from "./functions/createRoom.ts";
@@ -178,7 +179,9 @@ wss.on("connection", (socket: WebSocket) => {
       ) {
         await rooms.getParticipant(msg.roomCode, msg.participantId); // throws if invalid
         await rooms.handleConnect(msg.roomCode, msg.participantId);
-        realtime.bind(socket, msg.roomCode.toUpperCase(), msg.participantId);
+        if (realtime instanceof InMemoryPubSubService) {
+          realtime.bind(socket, msg.roomCode.toUpperCase(), msg.participantId);
+        }
       }
     } catch {
       socket.close(1008, "Invalid connect payload");
@@ -186,9 +189,11 @@ wss.on("connection", (socket: WebSocket) => {
   });
 
   socket.on("close", () => {
-    const binding = realtime.unbind(socket);
-    if (binding) {
-      void rooms.handleDisconnect(binding.roomCode, binding.participantId);
+    if (realtime instanceof InMemoryPubSubService) {
+      const binding = realtime.unbind(socket);
+      if (binding) {
+        void rooms.handleDisconnect(binding.roomCode, binding.participantId);
+      }
     }
   });
 });
