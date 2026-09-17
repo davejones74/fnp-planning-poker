@@ -6,4 +6,6 @@ import type { RoomEvent } from "../../../shared/types.ts";
  */
 export interface PubSubService {
   publishToRoom(roomCode: string, event: RoomEvent): void;
+  /** Force-closes a participant's sockets (used when the facilitator removes them). */
+  disconnectParticipant(roomCode: string, participantId: string): void;
 }

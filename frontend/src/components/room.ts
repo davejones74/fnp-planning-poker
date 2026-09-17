@@ -6,6 +6,7 @@ import { renderEstimationDeck } from "./estimation-deck.ts";
 import { renderPlayersPanel, updateTimers } from "./players-panel.ts";
 import { renderStoryPanel } from "./story-panel.ts";
 import { navigate, el, clear, showToast, inputValue } from "./dom.ts";
+import { firstName } from "../util/display.ts";
 import { normalizeRoomCode } from "../../../shared/validation.ts";
 import type { PublicRoom } from "../../../shared/types.ts";
 
@@ -99,7 +100,11 @@ function renderJoin(root: HTMLElement, code: string): void {
     }
     joinButton.disabled = true;
     try {
-      const result = await roomsApi.join(code, name);
+      const result = await roomsApi.join(
+        code,
+        name,
+        appState.getParticipantId(code) ?? undefined,
+      );
       appState.setSession(result.roomCode, result.participantId, result.displayName);
       const room = await roomsApi.get(result.roomCode, result.participantId);
       await enterRoom(root, result.roomCode, { participantId: result.participantId, displayName: result.displayName }, room);
@@ -108,7 +113,7 @@ function renderJoin(root: HTMLElement, code: string): void {
       if (isNotFound) {
         appState.removeRecentRoom(code);
       }
-      showToast(isNotFound ? "Room not found or expired." : "Could not join room.", true);
+      showToast(isNotFound ? "Room not found or expired." : format(err), true);
       joinButton.disabled = false;
     }
   });
@@ -133,7 +138,7 @@ async function enterRoom(
   const roomHeader = el("header", { class: "room-header" });
   const title = el("h1", {
     class: "room-title",
-    text: `${state.facilitatorName() ?? `Room ${code}`} Estimation Room`,
+    text: roomTitle(state, code),
   });
   roomHeader.append(title);
   wrapper.append(roomHeader);
@@ -158,7 +163,9 @@ async function enterRoom(
 
   // ---- Actions ----
   function leave(): void {
-    appState.clearSession(code);
+    // Keep the stored identity so "Rejoin" resumes this participant instead
+    // of creating a duplicate; it is cleared only when the server says the
+    // participant no longer exists.
     teardownRoom();
     navigate("/");
   }
@@ -177,8 +184,7 @@ async function enterRoom(
   }
 
   function renderAll(): void {
-    const facilitator = state.facilitatorName() ?? `Room ${code}`;
-    title.textContent = `${facilitator} Estimation Room`;
+    title.textContent = roomTitle(state, code);
 
     renderEstimationDeck(deckRoot, state, async (card) => {
       try {
@@ -221,6 +227,14 @@ async function enterRoom(
           showToast("Could not start round: " + format(err), true);
         }
       },
+      onRemove: async (targetParticipantId) => {
+        try {
+          await roomsApi.removeParticipant(code, targetParticipantId);
+          await refresh();
+        } catch (err) {
+          showToast("Could not remove participant: " + format(err), true);
+        }
+      },
       onLeave: leave,
     });
   }
@@ -246,21 +260,51 @@ async function enterRoom(
         renegotiate: () =>
           roomsApi.negotiate(code, session.participantId).then((result) => result.url),
         onEvent(evt) {
+          if (
+            evt.type === "participant.left" &&
+            evt.participant.id === session.participantId
+          ) {
+            handleRemoved("You were removed from the room.");
+            return;
+          }
           state.applyEvent(evt);
           renderAll();
         },
         onStatus() {
           // Presence is reflected through participant.updated events.
         },
+        onUnauthorized() {
+          handleRemoved("You are no longer in this room.");
+        },
       });
       client.join(code, session.participantId);
       activeClient = client;
-    } catch {
+    } catch (err) {
+      if (
+        err instanceof ApiClientError &&
+        (err.status === 403 || err.status === 404)
+      ) {
+        handleRemoved("You are no longer in this room.");
+        return;
+      }
       setTimeout(connectWs, 5_000);
     }
   }
 
   void connectWs();
+}
+
+function handleRemoved(message: string): void {
+  showToast(message, true);
+  teardownRoom();
+  navigate("/");
+}
+
+function roomTitle(state: RoomState, code: string): string {
+  const facilitator = state.facilitatorName();
+  return facilitator
+    ? `${firstName(facilitator)} Estimation Room`
+    : `Room ${code} Estimation Room`;
 }
 
 function format(err: unknown): string {

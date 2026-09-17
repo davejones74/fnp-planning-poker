@@ -106,13 +106,6 @@ body {
   width: auto;
 }
 
-[data-theme="dark"] .footer-brand .brand-logo {
-  background: #ffffff;
-  border-radius: 4px;
-  padding: 2px 6px;
-  box-sizing: content-box;
-}
-
 .footer-brand .brand-text {
   font-size: 13px;
   font-weight: 600;
@@ -635,6 +628,10 @@ button.danger:hover {
   font-weight: 600;
 }
 
+.summary-players-cap {
+  color: var(--text-faint);
+}
+
 .summary-timer {
   display: inline-flex;
   align-items: center;
@@ -675,10 +672,10 @@ button.danger:hover {
 
 .presence-dot {
   position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 9px;
-  height: 9px;
+  right: -2px;
+  bottom: -2px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid var(--panel);
 }
@@ -723,6 +720,23 @@ button.danger:hover {
   color: var(--text-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
+}
+
+.player-remove {
+  margin-left: 10px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid var(--border-card);
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.player-remove:hover {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .player-vote {

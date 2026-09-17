@@ -20,9 +20,14 @@ export class FakeClock {
 
 export class FakePubSub {
   events: Array<{ roomCode: string; event: RoomEvent }> = [];
+  disconnects: Array<{ roomCode: string; participantId: string }> = [];
 
   publishToRoom(roomCode: string, event: RoomEvent): void {
     this.events.push({ roomCode, event });
+  }
+
+  disconnectParticipant(roomCode: string, participantId: string): void {
+    this.disconnects.push({ roomCode, participantId });
   }
 
   forRoom(roomCode: string): Array<{ roomCode: string; event: RoomEvent }> {

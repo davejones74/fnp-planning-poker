@@ -52,21 +52,30 @@ export const appState = {
     document.documentElement.dataset.theme = value;
   },
 
-  /** Session-scoped participant identity for a room. */
+  /** Participant id previously used by this browser for a room, if any. */
+  getParticipantId(roomCode: string): string | null {
+    return safeGet(localStorage, ROOM_PREFIX + roomCode);
+  },
+
+  /**
+   * Participant identity for a room. Stored in localStorage (not session) so a
+   * rejoin from another tab or after a browser restart resumes the same
+   * participant instead of creating a duplicate.
+   */
   getSession(roomCode: string): SessionIdentity | null {
-    const participantId = safeGet(sessionStorage, ROOM_PREFIX + roomCode);
+    const participantId = this.getParticipantId(roomCode);
     if (!participantId) return null;
     return { participantId, displayName: this.displayName };
   },
 
   setSession(roomCode: string, participantId: string, displayName: string): void {
-    safeSet(sessionStorage, ROOM_PREFIX + roomCode, participantId);
+    safeSet(localStorage, ROOM_PREFIX + roomCode, participantId);
     this.displayName = displayName;
     this.addRecentRoom(roomCode);
   },
 
   clearSession(roomCode: string): void {
-    safeRemove(sessionStorage, ROOM_PREFIX + roomCode);
+    safeRemove(localStorage, ROOM_PREFIX + roomCode);
   },
 
   getRecentRooms(): string[] {

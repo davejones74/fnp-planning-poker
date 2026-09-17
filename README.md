@@ -19,7 +19,15 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
 
 - Create a room and get a short, human-friendly 6-character room code
 - Others join with a display name and share the join link
-- Joining again from the same browser (or after a refresh) restores the same session
+- Joining again from the same browser, a new tab, or after a refresh restores the same
+  session (the participant id is kept in `localStorage`); use **Rejoin** to come back
+- **Capacity:** a room accepts up to 20 participants (all states, online and offline) —
+  the Web PubSub **Free_F1** ceiling of 20 concurrent connections; the counter next to
+  the player list shows `Players: N / 20`
+- **Presence:** a green dot marks participants who are online, a red dot those who
+  dropped off (updated by Web PubSub connect/disconnect events)
+- **Kick:** the facilitator can remove a participant; their sockets are closed
+  immediately and that browser is returned to the home screen
 - Facilitator can set/edit the story (e.g. JIRA-123 + description)
 - **Import stories** — the facilitator uploads a Jira CSV (or RSS/XML) export; issues are parsed in the browser (the file never leaves the machine), shown as a pick list, and each imported story links back to its Jira ticket via the configured site. Live Jira fetch (OAuth) is implemented but disabled in the UI until credentials are provided
 - Default deck: **XS, S, M, L, XL, XXL, ?, coffee** (coffee = break; see `shared/decks.ts` for the fibonacci alternative)
@@ -268,7 +276,15 @@ free on the SWA free plan.
    group, a Cosmos DB Table API account, a Web PubSub **Free_F1** instance and a Static
    Web App, wires the connection strings into the SWA app settings
    (`COSMOS_TABLE_CONNECTION_STRING`, `WEB_PUBSUB_CONNECTION_STRING`, `WEB_PUBSUB_HUB`),
-   and prints the SWA **deployment token**.
+   configures the Web PubSub hub event handler (see below) and prints the SWA
+   **deployment token**.
+   > **Hub event handler (required for presence):** the hub must deliver
+   > `system-event=connected` / `system-event=disconnected` to
+   > `https://<swa-host>/api/pubsub/events`, with `--allow-anonymous false`.
+   > Without it clients connect fine but every participant stays "online" forever.
+   > Verify with `az webpubsub hub list -n fnppokerwps -g planning-poker` (must not be
+   > `[]`). To apply it to an existing deployment:
+   > `az webpubsub hub update --name fnppokerwps -g planning-poker --hub-name fnp --allow-anonymous false --event-handler "url-template=https://<swa-host>/api/pubsub/events" "system-event=connected" "system-event=disconnected"`.
 2. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**
    named `AZURE_STATIC_WEB_APPS_API_TOKEN` with that token as the value
    (do **not** commit the token).

@@ -173,18 +173,43 @@ az staticwebapp appsettings set `
     --output none
 if ($LASTEXITCODE -ne 0) { throw "Failed to set app settings." }
 
+$defaultHost = az staticwebapp show `
+    --name $swaName `
+    --resource-group $ResourceGroup `
+    --query defaultHostname `
+    --output tsv
+if (-not $defaultHost) { throw "Could not read the Static Web App hostname." }
+
+# Presence (online/offline dots) and connection accounting depend on Web PubSub
+# delivering connect/disconnect events to the API. Without this hub event
+# handler the app works but every participant stays "online" forever.
+Write-Host "Configuring Web PubSub hub '$Hub' event handlers..." -ForegroundColor Cyan
+az webpubsub hub show --name $wpsName --resource-group $ResourceGroup --hub-name $Hub --output none 2>$null
+if ($LASTEXITCODE -eq 0) {
+    az webpubsub hub update `
+        --name $wpsName `
+        --resource-group $ResourceGroup `
+        --hub-name $Hub `
+        --allow-anonymous false `
+        --event-handler "url-template=https://$defaultHost/api/pubsub/events" "system-event=connected" "system-event=disconnected" `
+        --output none
+} else {
+    az webpubsub hub create `
+        --name $wpsName `
+        --resource-group $ResourceGroup `
+        --hub-name $Hub `
+        --allow-anonymous false `
+        --event-handler "url-template=https://$defaultHost/api/pubsub/events" "system-event=connected" "system-event=disconnected" `
+        --output none
+}
+if ($LASTEXITCODE -ne 0) { throw "Failed to configure the Web PubSub hub event handler." }
+
 $token = az staticwebapp secrets list `
     --name $swaName `
     --resource-group $ResourceGroup `
     --query "properties.apiKey" `
     --output tsv
 if (-not $token) { throw "Could not read deployment token." }
-
-$defaultHost = az staticwebapp show `
-    --name $swaName `
-    --resource-group $ResourceGroup `
-    --query defaultHostname `
-    --output tsv
 
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Green

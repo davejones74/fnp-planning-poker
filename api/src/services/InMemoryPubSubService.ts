@@ -41,6 +41,20 @@ export class InMemoryPubSubService implements PubSubService {
     return binding;
   }
 
+  disconnectParticipant(roomCode: string, participantId: string): void {
+    for (const [socket, binding] of this.socketBinding) {
+      if (binding.roomCode !== roomCode || binding.participantId !== participantId) {
+        continue;
+      }
+      this.unbind(socket);
+      try {
+        socket.close(1008, "Removed from room");
+      } catch {
+        // Socket may already be closing; the participant is gone either way.
+      }
+    }
+  }
+
   publishToRoom(roomCode: string, event: RoomEvent): void {
     const sockets = this.roomSockets.get(roomCode);
     if (!sockets) return;

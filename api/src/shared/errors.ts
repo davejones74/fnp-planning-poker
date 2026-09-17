@@ -5,6 +5,7 @@ export type ApiErrorCode =
   | "ROOM_EXPIRED"
   | "NOT_IN_ROOM"
   | "NOT_FACILITATOR"
+  | "ROOM_FULL"
   | "INVALID_CARD"
   | "VOTING_CLOSED"
   | "CONFLICT"

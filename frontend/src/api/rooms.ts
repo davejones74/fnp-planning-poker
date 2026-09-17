@@ -141,7 +141,7 @@ export const roomsApi = {
  * session identity for the given room so callers do not repeat themselves.
  */
 function sessionParticipantId(code: string): string {
-  const raw = sessionStorage.getItem(`scrumPoker.room.${code}`);
+  const raw = localStorage.getItem(`scrumPoker.room.${code}`);
   if (!raw) {
     throw new ApiClientError("NOT_IN_ROOM", 401, "You are not in this room.");
   }

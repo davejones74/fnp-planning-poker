@@ -1,11 +1,13 @@
 import { el, clear, showToast } from "./dom.ts";
 import type { RoomState } from "../state/room-state.ts";
 import { formatElapsed } from "../util/time.ts";
+import { MAX_ROOM_PARTICIPANTS } from "../../../shared/validation.ts";
 import { checkIcon, clockIcon, coffeeIcon, personIcon, chevronIcon, copyIcon } from "./icons.ts";
 
 export interface PlayerPanelActions {
   onReveal: () => Promise<void> | void;
   onNewRound: () => Promise<void> | void;
+  onRemove: (participantId: string) => Promise<void> | void;
   onLeave: () => void;
 }
 
@@ -37,7 +39,17 @@ export function renderPlayersPanel(
   // Summary row: player count + room running time.
   const summary = el("div", { class: "player-summary" });
   summary.append(
-    el("span", { class: "summary-players" }, "Players: ", el("b", { text: String(room.participants.length) })),
+    el(
+      "span",
+      { class: "summary-players" },
+      "Players: ",
+      el("b", { text: String(room.participants.length) }),
+      el("span", {
+        class: "summary-players-cap",
+        text: ` / ${MAX_ROOM_PARTICIPANTS}`,
+        title: `${MAX_ROOM_PARTICIPANTS - room.participants.length} connection(s) left`,
+      }),
+    ),
   );
   const timer = el("span", { class: "summary-timer" });
   timer.append(clockIcon(15), el("span", { "data-room-since": "", text: formatElapsed(room.createdAt) }));
@@ -78,6 +90,21 @@ export function renderPlayersPanel(
       vote.append(check);
     }
     row.append(vote);
+
+    if (isFacilitator && p.id !== state.myParticipantId) {
+      const remove = el("button", {
+        class: "player-remove",
+        type: "button",
+        text: "Remove",
+        title: `Remove ${p.displayName} from the room`,
+        "aria-label": `Remove ${p.displayName} from the room`,
+      });
+      remove.addEventListener("click", () => {
+        remove.disabled = true;
+        void actions.onRemove(p.id);
+      });
+      row.append(remove);
+    }
 
     list.append(row);
   }

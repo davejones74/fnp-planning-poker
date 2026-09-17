@@ -5,6 +5,12 @@ export const DISPLAY_NAME_MAX = 30;
 export const STORY_TITLE_MAX = 100;
 export const STORY_DESCRIPTION_MAX = 500;
 
+/**
+ * Hard cap on participants per room. Azure Web PubSub Free_F1 allows 20
+ * concurrent connections per resource, so a room can never usefully exceed it.
+ */
+export const MAX_ROOM_PARTICIPANTS = 20;
+
 export function isValidRoomCode(code: string): boolean {
   if (code.length !== ROOM_CODE_LENGTH) return false;
   for (const char of code) {

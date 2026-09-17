@@ -7,6 +7,7 @@ interface WebPubSubGroupLike {
 
 interface WebPubSubClientLike {
   group(groupName: string): WebPubSubGroupLike;
+  closeUserConnections(userId: string): Promise<void>;
 }
 
 /**
@@ -25,6 +26,21 @@ export class WebPubSubPubSubService implements PubSubService {
 
   publishToRoom(roomCode: string, event: RoomEvent): void {
     void this.send(roomCode, event);
+  }
+
+  disconnectParticipant(roomCode: string, participantId: string): void {
+    void this.closeUser(roomCode, participantId);
+  }
+
+  private async closeUser(roomCode: string, participantId: string): Promise<void> {
+    try {
+      const client = await this.client();
+      // negotiate() set userId to "<roomCode>:<participantId>".
+      await client.closeUserConnections(`${roomCode}:${participantId}`);
+    } catch (error) {
+      // A participant with no live connections 404s; that is a no-op for us.
+      console.error("Web PubSub closeUserConnections failed:", error);
+    }
   }
 
   private async send(roomCode: string, event: RoomEvent): Promise<void> {

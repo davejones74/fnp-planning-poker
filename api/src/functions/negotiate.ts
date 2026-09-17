@@ -1,6 +1,6 @@
 ﻿import { jsonResponse } from "../shared/http.ts";
 import { ApiError } from "../shared/errors.ts";
-import { configuration } from "../services/index.ts";
+import { configuration, rooms } from "../services/index.ts";
 
 interface WebPubSubServiceClientLike {
   getClientAccessToken(options: {
@@ -47,6 +47,9 @@ export async function negotiate(request: Request): Promise<Response> {
         "roomCode and participantId are required to negotiate.",
       );
     }
+    // Verify the participant is still in the room before minting a token, so
+    // a removed (kicked) client cannot just renegotiate and reconnect.
+    await rooms.getParticipant(roomCode, participantId);
     const service = await client();
     const { url: connectionUrl } = await service.getClientAccessToken({
       userId: `${roomCode}:${participantId}`,

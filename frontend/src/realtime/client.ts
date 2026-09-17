@@ -27,6 +27,8 @@ export interface RealtimeClientOptions {
   renegotiate?: () => Promise<string>;
   onEvent(event: RoomEvent): void;
   onStatus(status: RealtimeStatus): void;
+  /** The server refused this session (e.g. the participant was removed). */
+  onUnauthorized?: () => void;
 }
 
 export class RealtimeClient {
@@ -78,7 +80,7 @@ export class RealtimeClient {
 
       ws.addEventListener("open", () => this.onOpen(ws));
       ws.addEventListener("message", (evt) => this.onMessage(evt));
-      ws.addEventListener("close", () => this.onClose());
+      ws.addEventListener("close", (evt) => this.onClose(evt));
       ws.addEventListener("error", () => ws.close());
     };
 
@@ -90,7 +92,7 @@ export class RealtimeClient {
           this.url = url;
           open();
         })
-        .catch(() => open());
+        .catch(() => this.fail());
     } else {
       open();
     }
@@ -122,12 +124,26 @@ export class RealtimeClient {
     if (isRoomEvent(parsed)) this.options.onEvent(parsed);
   }
 
-  private onClose(): void {
+  private onClose(evt?: CloseEvent): void {
     if (this.manuallyClosed) return;
+    // 1008 = policy violation, e.g. the facilitator removed this participant.
+    if (evt?.code === 1008) {
+      this.fail();
+      return;
+    }
     this.stopPing();
     const delay = Math.min(INITIAL_RETRY_DELAY * 2 ** this.retryAttempt, MAX_RETRY_DELAY);
     this.retryAttempt++;
     this.retryTimer = setTimeout(() => this.connect(), delay);
+  }
+
+  /** Stops retrying and tells the caller this session is no longer valid. */
+  private fail(): void {
+    if (this.manuallyClosed) return;
+    this.manuallyClosed = true;
+    this.stopPing();
+    this.options.onStatus("closed");
+    this.options.onUnauthorized?.();
   }
 
   private stopPing(): void {

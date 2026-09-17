@@ -10,6 +10,7 @@ import { DECKS } from "../../../shared/decks.ts";
 import { isValidRoomCode } from "../../../shared/validation.ts";
 import {
   DISPLAY_NAME_MAX,
+  MAX_ROOM_PARTICIPANTS,
   STORY_DESCRIPTION_MAX,
   STORY_TITLE_MAX,
 } from "../../../shared/validation.ts";
@@ -94,7 +95,32 @@ export class RoomService {
 
     if (typeof requestedParticipantId === "string") {
       const existing = room.participants.get(requestedParticipantId);
-      if (existing) return { room, participant: existing };
+      if (existing) {
+        // Resuming after an offline spell must put the participant back online
+        // for everyone else; otherwise rejoiners stay red until a socket event.
+        if (!existing.connected) {
+          existing.connected = true;
+          await this.persist(room);
+          await this.pubsub.publishToRoom(room.code, {
+            type: "participant.updated",
+            roomCode: room.code,
+            participant: {
+              id: existing.id,
+              displayName: existing.displayName,
+              connected: true,
+            },
+          });
+        }
+        return { room, participant: existing };
+      }
+    }
+
+    if (room.participants.size >= MAX_ROOM_PARTICIPANTS) {
+      throw new ApiError(
+        "ROOM_FULL",
+        409,
+        `This room is full (maximum ${MAX_ROOM_PARTICIPANTS} connections on the free tier).`,
+      );
     }
 
     const participant: Participant = {
@@ -256,6 +282,9 @@ export class RoomService {
       roomCode: room.code,
       participant: { id: target.id, displayName: target.displayName },
     });
+    // Drop the kicked participant's sockets so they stop consuming one of the
+    // 20 Web PubSub connections and cannot keep receiving room events.
+    this.pubsub.disconnectParticipant(room.code, targetParticipantId);
   }
 
   async handleConnect(code: string, participantId: string): Promise<void> {
