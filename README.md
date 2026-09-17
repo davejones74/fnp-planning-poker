@@ -4,13 +4,16 @@ Lightweight web-based **Scrum / Planning Poker** estimation app.
 
 **Phase 1: complete local MVP.** Runs on Node's built-in HTTP + WebSocket server with an in-memory room store. No database, no auth, no cloud dependencies.
 
-**Phase 2 (roadmap → on disk): free Azure hosting.** The local handlers already
+**Phase 2 (roadmap → on disk): free Azure hosting — deployed.** The local handlers
 run as an Azure Functions v4 bundle (`api/dist/index.js` via `npm run build:api`);
-rooms persist to Cosmos DB Table API when `COSMOS_TABLE_CONNECTION_STRING` is set;
-realtime negotiates an Azure Web PubSub endpoint, and the frontend
-`RealtimeClient` speaks the `json.webpubsub.azure.v1` subprotocol. A GitHub Actions
-workflow (`azure-setup.ps1` + `.github/workflows/azure-static-web-apps.yml`)
-deploys the stack to Azure Static Web Apps (Free plan). See "Deploying to Azure" below.
+the deployed bundle is **CommonJS** (Static Web Apps managed Functions load the
+entry point with `require()`) and the front end declares
+`"platform": { "apiRuntime": "node:20" }`. Rooms persist to Cosmos DB Table API when
+`COSMOS_TABLE_CONNECTION_STRING` is set; realtime negotiates an Azure Web PubSub
+endpoint, and the frontend `RealtimeClient` speaks the `json.webpubsub.azure.v1`
+subprotocol. A GitHub Actions workflow (`azure-setup.ps1` +
+`.github/workflows/azure-static-web-apps.yml`) deploys the stack to Azure Static Web
+Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
 
 ## Features
 
@@ -137,7 +140,7 @@ with the matching HTTP status. Room codes use the alphabet
 | `POST` | `/api/jira/feed` | Facilitator-only; `{ roomCode, participantId, feedUrl? }` → `{ ok, stories, feedUrl }`; omitted `feedUrl` reuses the room's last-used link |
 | `GET` | `/api/negotiate` | Returns `{ url }` for the WebSocket, e.g. `ws://host/ws` |
 | `GET` | `/api/me` | `{ authenticated, isAdmin, identity }` (placeholder until auth) |
-| `GET` | `/health` | Availability probe |
+| `GET` | `/api/health` | Availability probe (the local dev server also serves `/health`) |
 
 For anything with `participantId`, the server re-validates the participant exists in
 the room and the sender is allowed to act (e.g. only the facilitator may reveal). The
@@ -224,14 +227,17 @@ implementations.
 | Durable rooms & presence | **Azure Cosmos DB — Free tier** (1000 RU/s, 25 GB) | New `RoomRepository` impl via `@azure/data-tables` (Table API) replaces `InMemoryRoomRepository`; room 24h expiry keeps usage tiny; `pubsub` swaps to the Web PubSub service |
 
 **Deployment & CI/CD — GitHub Actions**: a workflow runs
-`npm ci && npm run build`, then `Azure/static-web-apps-deploy` publishes
-`output_location=dist/frontend` and the managed Functions API. Preview
-environments per PR come for free on the SWA free plan.
+`npm ci && npm run build`, then `Azure/static-web-apps-deploy` publishes the prebuilt
+front end (`app_location=dist/frontend`, `skip_app_build=true`) and the managed
+Functions API from `api` (`api_location=api`). Preview environments per PR come for
+free on the SWA free plan.
 
 ### Phase 2 work items
 
 - [x] 1. **Functions host** — `api/package.json` + `@azure/functions` entry; `scripts/build-api.mjs`
-  bundles all handlers into `api/dist/index.js`, so SWA managed Functions run them as-is.
+  bundles all handlers into `api/dist/index.js` as **CommonJS** (a nested
+  `dist/package.json` keeps `api/package.json` ESM for local dev), so SWA managed
+  Functions run them as-is.
 - [x] 2. **Durable repository** — `CosmosTableRoomRepository` implementing `RoomRepository`
   (swap in `api/src/services/index.ts`).
 - [x] 3. **Web PubSub realtime** — `negotiate` returns the Azure endpoint + token; the frontend
@@ -246,6 +252,18 @@ environments per PR come for free on the SWA free plan.
 
 ### Deploying to Azure ($0/mo)
 
+**Live deployment (access details)**
+
+| Item | Value |
+| --- | --- |
+| Public URL | https://salmon-glacier-03161df0f.6.azurestaticapps.net |
+| API health check | https://salmon-glacier-03161df0f.6.azurestaticapps.net/api/health |
+| Resource group | `planning-poker` |
+| Static Web App (Free) | `fnppokerswa` — East US 2 |
+| Cosmos DB Table API (free tier) | `fnppokercosmos` |
+| Web PubSub (Free_F1, hub `fnp`) | `fnppokerwps` |
+| Deployment token | GitHub Actions secret `AZURE_STATIC_WEB_APPS_API_TOKEN` (never commit its value) |
+
 1. Run `./azure-setup.ps1` in Azure Cloud Shell (PowerShell) — it creates the resource
    group, a Cosmos DB Table API account, a Web PubSub **Free_F1** instance and a Static
    Web App, wires the connection strings into the SWA app settings
@@ -257,6 +275,13 @@ environments per PR come for free on the SWA free plan.
 3. Push to `master`. `.github/workflows/azure-static-web-apps.yml` runs
    `npm ci && npm run build` (typecheck + bundle both sides) and deploys
    `dist/frontend` + `api` via `Azure/static-web-apps-deploy`.
+
+> **Managed Functions gotcha:** SWA only deploys the API when it can determine the
+> runtime language/version — it reads `platform.apiRuntime` from
+> `frontend/public/staticwebapp.config.json` (set to `node:20`). The entry bundle must
+> also be CommonJS, because the managed Functions host loads `main` with `require()`;
+> an ESM (`"type": "module"`) entry fails to index and every `/api/*` route returns 404
+> even though the deploy is green.
 
 The SWA **Free** plan (2026) includes the managed Functions API (1M executions/mo),
 100 GB bandwidth/mo and 3 preview environments. Web PubSub F1 caps at 20 concurrent
