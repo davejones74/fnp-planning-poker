@@ -2,6 +2,7 @@ import { el, clear } from "./dom.ts";
 import type { RoomState } from "../state/room-state.ts";
 import type { CardValue } from "../../../shared/types.ts";
 import { coffeeIcon } from "./icons.ts";
+import { renderVoteChart } from "./vote-chart.ts";
 
 const COFFEE = "coffee";
 
@@ -44,6 +45,13 @@ export function renderEstimationDeck(
   const room = state.room;
   const voting = room.roundStatus === "voting";
   const container = el("div", { class: "estimation-deck" });
+
+  if (room.roundStatus === "revealed") {
+    container.append(renderVoteChart(room.participants, room.deck));
+    root.append(container);
+    return;
+  }
+
   const grid = el("div", { class: "deck-grid" });
 
   room.deck.forEach((card, index) => {

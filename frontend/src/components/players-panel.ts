@@ -2,6 +2,7 @@ import { el, clear, showToast } from "./dom.ts";
 import type { RoomState } from "../state/room-state.ts";
 import { formatElapsed } from "../util/time.ts";
 import { MAX_ROOM_PARTICIPANTS } from "../../../shared/validation.ts";
+import { outliersForRound } from "../util/estimates.ts";
 import { checkIcon, clockIcon, coffeeIcon, personIcon, chevronIcon, copyIcon } from "./icons.ts";
 
 export interface PlayerPanelActions {
@@ -36,6 +37,10 @@ export function renderPlayersPanel(
   const panel = el("section", { class: "players-panel" });
   panel.append(renderStatusHeader(state, isFacilitator, voting, revealed, actions));
 
+  const outliers = revealed
+    ? outliersForRound(room.participants, room.roundId)
+    : null;
+
   // Summary row: player count + room running time.
   const summary = el("div", { class: "player-summary" });
   summary.append(
@@ -59,7 +64,12 @@ export function renderPlayersPanel(
   // Player rows.
   const list = el("ul", { class: "player-list" });
   for (const p of room.participants) {
-    const row = el("li", { class: "player-row" + (p.id === state.myParticipantId ? " me" : "") });
+    let rowClass = "player-row" + (p.id === state.myParticipantId ? " me" : "");
+    if (outliers) {
+      if (p.id === outliers.lowestId) rowClass += " highlight-lowest";
+      else if (p.id === outliers.highestId) rowClass += " highlight-highest";
+    }
+    const row = el("li", { class: rowClass });
 
     const avatar = el("span", { class: "avatar", "aria-hidden": "true" });
     avatar.append(personIcon(24));

@@ -32,7 +32,13 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
 - **Import stories** — the facilitator uploads a Jira CSV (or RSS/XML) export; issues are parsed in the browser (the file never leaves the machine), shown as a pick list, and each imported story links back to its Jira ticket via the configured site. Live Jira fetch (OAuth) is implemented but disabled in the UI until credentials are provided
 - Default deck: **XS, S, M, L, XL, XXL, ?, coffee** (coffee = break; see `shared/decks.ts` for the fibonacci alternative)
 - Participants pick a card; only a ✓ (voted) status is visible to others
-- Facilitator reveals the cards; a new round clears all selections
+- Facilitator reveals the cards; the reveal replaces the deck with a **vote chart** — a
+  donut of all vote values (`?` and coffee included) plus a coloured legend with counts
+- **Outlier prompts:** once revealed, the members holding the **lowest** (optimistic)
+  and **highest** (pessimistic) estimates are subtly highlighted (purple / yellow,
+  with a soft pulse); ties resolve randomly preferring online members, and highlights
+  are skipped when all estimates match
+- A new round clears all selections
 - Participants leaving are marked offline in real time
 - Room running time (and each player's time in the room) is shown live
 - Realtime updates via WebSocket; the client auto-reconnects with backoff
@@ -264,7 +270,8 @@ free on the SWA free plan.
 
 | Item | Value |
 | --- | --- |
-| Public URL | https://salmon-glacier-03161df0f.6.azurestaticapps.net |
+| Custom domain (managed TLS) | https://planning-poker.runningcode.dev |
+| Public URL (SWA default) | https://salmon-glacier-03161df0f.6.azurestaticapps.net |
 | API health check | https://salmon-glacier-03161df0f.6.azurestaticapps.net/api/health |
 | Resource group | `planning-poker` |
 | Static Web App (Free) | `fnppokerswa` — East US 2 |
