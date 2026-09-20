@@ -8,6 +8,7 @@ const EVENT_TYPES = new Set<string>([
   "cards.revealed",
   "round.started",
   "story.updated",
+  "stories.updated",
 ]);
 
 export function isRoomEvent(value: unknown): value is RoomEvent {

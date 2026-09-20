@@ -10,6 +10,9 @@ import { vote } from "./functions/vote.ts";
 import { reveal } from "./functions/reveal.ts";
 import { newRound } from "./functions/newRound.ts";
 import { updateStory } from "./functions/updateStory.ts";
+import { importStories } from "./functions/importStories.ts";
+import { startStoryEstimation } from "./functions/startStoryEstimation.ts";
+import { recordAgreedEstimate } from "./functions/recordAgreedEstimate.ts";
 import { removeParticipant } from "./functions/removeParticipant.ts";
 import { negotiate } from "./functions/negotiate.ts";
 import { pubsubEvents } from "./functions/pubsubEvents.ts";
@@ -137,6 +140,27 @@ app.http("updateStory", {
   authLevel: "anonymous",
   route: "rooms/{code}/story",
   handler: toAzure(wrap(updateStory)),
+});
+
+app.http("importStories", {
+  methods: ["POST"],
+  authLevel: "anonymous",
+  route: "rooms/{code}/stories/import",
+  handler: toAzure(wrap(importStories)),
+});
+
+app.http("startStoryEstimation", {
+  methods: ["POST"],
+  authLevel: "anonymous",
+  route: "rooms/{code}/stories/{key}/start",
+  handler: toAzure(wrap(startStoryEstimation)),
+});
+
+app.http("recordAgreedEstimate", {
+  methods: ["POST"],
+  authLevel: "anonymous",
+  route: "rooms/{code}/stories/{key}/estimate",
+  handler: toAzure(wrap(recordAgreedEstimate)),
 });
 
 app.http("removeParticipant", {

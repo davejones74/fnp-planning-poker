@@ -29,7 +29,20 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
 - **Kick:** the facilitator can remove a participant; their sockets are closed
   immediately and that browser is returned to the home screen
 - Facilitator can set/edit the story (e.g. JIRA-123 + description)
-- **Import stories** — the facilitator uploads a Jira CSV (or RSS/XML) export; issues are parsed in the browser (the file never leaves the machine), shown as a pick list, and each imported story links back to its Jira ticket via the configured site. Live Jira fetch (OAuth) is implemented but disabled in the UI until credentials are provided
+- **Import stories into a session backlog** — the facilitator uploads a Jira CSV (or
+  RSS/XML) export; issues are parsed in the browser (the file never leaves the machine),
+  added to the room's backlog, and each story links back to its Jira ticket via the
+  configured site. Duplicate keys are refreshed in place, invalid rows are skipped, and
+  the backlog is capped at 200 stories. Live Jira fetch (OAuth) is implemented but
+  disabled in the UI until credentials are provided
+- **Story-based estimation (optional)** — with stories in the backlog the facilitator can
+  also add manual stories (synthetic `MAN-` keys), start one story at a time, and after
+  reveal record the agreed estimate from a deck dropdown (coffee excluded). Recording
+  moves the story to **Completed** and opens a fresh story-free round
+- The story panel has **HOW IT WORKS / STORIES TO ESTIMATE / COMPLETED** tabs, an
+  "Estimation session: n / total" progress bar, a **current-story banner** above the deck,
+  a completed table (key, title, agreed estimate, completion time), and a discussion
+  prompt when revealed estimates differ
 - Default deck: **XS, S, M, L, XL, XXL, ?, coffee** (coffee = break; see `shared/decks.ts` for the fibonacci alternative)
 - Participants pick a card; only a ✓ (voted) status is visible to others
 - Facilitator reveals the cards; the reveal replaces the deck with a **vote chart** — a
@@ -147,6 +160,9 @@ with the matching HTTP status. Room codes use the alphabet
 | `POST` | `/api/rooms/{code}/reveal` | Facilitator-only; publishes `cards.revealed` |
 | `POST` | `/api/rooms/{code}/round` | Facilitator-only; clears selections, new round |
 | `PUT` | `/api/rooms/{code}/story` | Facilitator-only; `{ participantId, title, description, key?, url? }` |
+| `POST` | `/api/rooms/{code}/stories/import` | Facilitator-only; `{ participantId, stories: [{ key, title, description, url? }] }` → upserts the backlog and returns `{ imported, duplicatesSkipped, invalidSkipped, limitSkipped, stories }` |
+| `POST` | `/api/rooms/{code}/stories/{key}/start` | Facilitator-only; marks the story `estimating` and starts a voting round carrying it |
+| `POST` | `/api/rooms/{code}/stories/{key}/estimate` | Facilitator-only; `{ participantId, estimate }` — revealed round + valid deck value, records the agreed estimate and opens a story-free round |
 | `POST` | `/api/rooms/{code}/participants/remove` | Facilitator-only; `{ participantId, targetParticipantId }` |
 | `GET` | `/api/config` | Non-secret client config `{ jiraHost, jiraProjectKey }` used by the import dialog |
 | `GET` | `/api/jira/authorize?room=&returnTo=` | Opens the Atlassian consent screen in a popup (mock consent page when `JIRA_MOCK=1`) |
@@ -175,9 +191,11 @@ entirely in the browser** — the file is never uploaded:
    `<key>` element, a `/browse/KEY` link or the title.
 3. A filter's RSS is an **activity feed** (it lists comments). Those comment items are
    skipped, and when nothing usable is found the dialog suggests the CSV export instead.
-4. Fetched issues render under "Pick a story to import"; selecting one becomes the current
-   story. Its panel key links to `<JIRA_HOST>/browse/<KEY>`, and `KEY` (or
-   `JIRA_PROJECT_KEY`) filters the list to a single project.
+4. Imported issues are added to the room's **session backlog** (upsert by issue key,
+   preserving each story's status and any recorded estimate). Every story's key links to
+   `<JIRA_HOST>/browse/<KEY>`, and `KEY` (or `JIRA_PROJECT_KEY`) filters the list to a
+   single project. From the backlog the facilitator starts one story at a time for the
+   room to estimate.
 
 Live fetch (below) is disabled in the UI for now; the file path needs no Atlassian
 credentials.
@@ -211,13 +229,15 @@ The client connects to the URL from `/api/negotiate` and sends:
 The server binds the socket to the room and starts broadcasting room events:
 `participant.joined`, `participant.left`, `participant.updated` (presence),
 `card.selected` (contains **only** `{ participantId, hasSelected }` — never the card
-value), `cards.revealed` (full selections), `round.started`, `story.updated`.
+value), `cards.revealed` (full selections), `round.started` (carries the current story
+when one is active), `story.updated`, `stories.updated` (full session backlog — the
+client replaces its list).
 
 ## Security invariants
 
 - **Card values are never broadcast before reveal** — `card.selected` carries no value; the room snapshot hides all cards but the requester's own.
 - **Facilitator actions are enforced server-side** — the `isFacilitator` flag can't be set by a client.
-- **All input validated server-side** — room codes, display names (1–30), story title (1–100) / description (0–500), and card values.
+- **All input validated server-side** — room codes, display names (1–30), story key (1–20) / title (1–100) / description (0–500) / url (0–500), and card values; the session backlog is capped at 200 stories.
 
 ## Known limitations (Phase 1)
 

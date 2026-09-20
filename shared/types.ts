@@ -38,6 +38,22 @@ export interface Story {
   url?: string;
 }
 
+export type SessionStoryStatus = "ready" | "estimating" | "estimated";
+
+/**
+ * A story in the room's session backlog. Lives independently of any single
+ * estimation round: it stays in the backlog after its round completes, keeping
+ * its agreed estimate. `key` is the identity used by the story workflow.
+ */
+export interface SessionStory extends Story {
+  key: string;
+  status: SessionStoryStatus;
+  /** Set by the facilitator when the agreed estimate is recorded. */
+  agreedEstimate?: CardValue;
+  /** When the facilitator recorded the agreed estimate. */
+  estimatedAt?: string;
+}
+
 export interface Round {
   id: string;
   story?: Story;
@@ -55,6 +71,8 @@ export interface Room {
   participants: Map<string, Participant>;
   currentRound: Round;
   deck: CardValue[];
+  /** Session backlog of imported/manual stories (optional workflow). */
+  stories: SessionStory[];
   /** Last Jira search/filter link used to import stories into this room. */
   jiraFeedUrl?: string;
 }
@@ -77,6 +95,7 @@ export interface PublicRoom {
   story?: Story;
   deck: CardValue[];
   participants: PublicParticipant[];
+  stories: SessionStory[];
   self?: {
     participantId: string;
     selectedCard: CardValue | null;
@@ -90,7 +109,8 @@ export type RoomEvent =
   | CardSelectedEvent
   | CardsRevealedEvent
   | RoundStartedEvent
-  | StoryUpdatedEvent;
+  | StoryUpdatedEvent
+  | StoriesUpdatedEvent;
 
 export interface ParticipantJoinedEvent {
   type: "participant.joined";
@@ -140,6 +160,12 @@ export interface StoryUpdatedEvent {
   type: "story.updated";
   roomCode: string;
   story: Story;
+}
+
+export interface StoriesUpdatedEvent {
+  type: "stories.updated";
+  roomCode: string;
+  stories: SessionStory[];
 }
 
 export type ClientMessage =

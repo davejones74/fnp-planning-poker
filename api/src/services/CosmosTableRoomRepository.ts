@@ -1,4 +1,4 @@
-import type { CardValue, Participant, Room, Round } from "../../../shared/types.ts";
+import type { CardValue, Participant, Room, Round, SessionStory } from "../../../shared/types.ts";
 import type { RoomRepository } from "./RoomRepository.ts";
 
 interface RoomEntity {
@@ -12,6 +12,7 @@ interface RoomEntity {
   deck: string;
   currentRound: string;
   participants: string;
+  stories: string;
   jiraFeedUrl: string;
 }
 
@@ -39,6 +40,7 @@ export function toEntity(room: Room): RoomEntity {
     deck: JSON.stringify(room.deck),
     currentRound: JSON.stringify(room.currentRound),
     participants: JSON.stringify([...room.participants.values()]),
+    stories: JSON.stringify(room.stories),
     jiraFeedUrl: room.jiraFeedUrl ?? "",
   };
 }
@@ -57,6 +59,8 @@ export function fromEntity(entity: RoomEntity): Room {
     deck: JSON.parse(entity.deck) as CardValue[],
     currentRound: JSON.parse(entity.currentRound) as Round,
     participants,
+    // Rooms persisted before the backlog existed have no `stories` column.
+    stories: entity.stories ? (JSON.parse(entity.stories) as SessionStory[]) : [],
   };
   if (entity.jiraFeedUrl) room.jiraFeedUrl = entity.jiraFeedUrl;
   return room;

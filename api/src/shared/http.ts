@@ -17,6 +17,18 @@ export function roomCodeFromUrl(request: Request): string {
   return code;
 }
 
+/** Extracts and normalises the story key from a /api/rooms/{code}/stories/{key}/... URL. */
+export function storyKeyFromUrl(request: Request): string {
+  const segments = new URL(request.url).pathname.split("/").filter(Boolean);
+  const index = segments.indexOf("rooms");
+  const raw = index >= 0 ? segments[index + 3] : undefined;
+  const key = (raw ?? "").toUpperCase();
+  if (!key) {
+    throw new ApiError("INVALID_REQUEST", 400, "Story key is required.");
+  }
+  return key;
+}
+
 export function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,

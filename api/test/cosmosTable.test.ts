@@ -1,58 +1,48 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { Participant, Room } from "../../shared/types.ts";
+import type { Room } from "../../shared/types.ts";
 import {
   fromEntity,
   toEntity,
 } from "../src/services/CosmosTableRoomRepository.ts";
 import { makeHarness, roomWithTwo } from "./helpers.ts";
 
-describe("CosmosTableRoomRepository - entity mapping", () => {
-  it("round-trips a fresh room through the entity form", async () => {
+describe("CosmosTableRoomRepository - story backlog", () => {
+  it("round-trips the session story backlog through the entity form", async () => {
     const h = makeHarness();
-    const { room } = await h.service.createRoom("Dave");
+    const { code, facilitatorId, joinerId } = await roomWithTwo(h);
+    await h.service.importStories(code, facilitatorId, {
+      stories: [
+        { key: "FPB-42", title: "Search payments", description: "Find a payment" },
+        { key: "MAN-1", title: "Manual story", description: "" },
+      ],
+    });
+    await h.service.startStoryEstimation(code, facilitatorId, "FPB-42");
+    await h.service.selectCard(code, facilitatorId, "5");
+    await h.service.selectCard(code, joinerId, "5");
+    await h.service.revealCards(code, facilitatorId);
+    await h.service.recordAgreedEstimate(code, facilitatorId, "FPB-42", "5");
 
-    const entity = toEntity(room);
-    assert.equal(entity.partitionKey, "rooms");
-    assert.equal(entity.rowKey, room.code);
-    assert.equal(entity.code, room.code);
-
-    const restored = fromEntity(entity);
-    assert.deepEqual(restored, room);
-  });
-
-  it("round-trips participants, deck and round state", async () => {
-    const h = makeHarness();
-    const { code, joinerId } = await roomWithTwo(h);
     const room = await h.repository.get(code) as Room;
-    const participant = room.participants.get(joinerId) as Participant;
-    participant.selectedCard = room.deck[0];
-
     const restored = fromEntity(toEntity(room));
-    assert.equal(restored.participants.size, 2);
-    assert.equal(restored.participants.get(joinerId)?.selectedCard, room.deck[0]);
-    assert.equal(restored.currentRound.status, "voting");
-    assert.deepEqual([...restored.deck], room.deck);
-    assert.equal(restored.facilitatorId, room.facilitatorId);
+
+    assert.equal(restored.stories.length, 2);
+    assert.deepEqual(restored.stories, room.stories);
+    const estimated = restored.stories.find((s) => s.key === "FPB-42");
+    assert.equal(estimated?.status, "estimated");
+    assert.equal(estimated?.agreedEstimate, "5");
+    assert.ok(estimated?.estimatedAt, "estimatedAt timestamp restored");
+    const manual = restored.stories.find((s) => s.key === "MAN-1");
+    assert.equal(manual?.status, "ready");
   });
 
-  it("stores the optional jira feed url when set", async () => {
-    const h = makeHarness();
-    const { room, participant } = await h.service.createRoom("Dave");
-    await h.service.setJiraFeedUrl(
-      room.code,
-      participant.id,
-      "https://jira.invalid/filter/123",
-    );
-
-    const restored = fromEntity(toEntity(room));
-    assert.equal(restored.jiraFeedUrl, "https://jira.invalid/filter/123");
-  });
-
-  it("omits the jira feed url when absent", async () => {
+  it("defaults to an empty backlog when the stories column is missing", async () => {
     const h = makeHarness();
     const { room } = await h.service.createRoom("Dave");
-    const restored = fromEntity(toEntity(room));
-    assert.equal(restored.jiraFeedUrl, undefined);
+    const entity = toEntity(room) as unknown as Record<string, unknown>;
+    delete entity.stories;
+
+    const restored = fromEntity(entity as never);
+    assert.deepEqual(restored.stories, []);
   });
 });

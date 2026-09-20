@@ -96,7 +96,7 @@ export class RoomState {
       case "round.started": {
         this.room.roundId = event.roundId;
         this.room.roundStatus = "voting";
-        if (event.story) this.room.story = event.story;
+        this.room.story = event.story;
         for (const p of this.room.participants) {
           p.hasSelected = false;
           p.selectedCard = null;
@@ -106,6 +106,9 @@ export class RoomState {
       }
       case "story.updated":
         this.room.story = event.story;
+        break;
+      case "stories.updated":
+        this.room.stories = event.stories.map((story) => ({ ...story }));
         break;
     }
   }

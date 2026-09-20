@@ -196,20 +196,20 @@ async function enterRoom(
       } catch (err) {
         showToast("Could not vote: " + format(err), true);
       }
-    });
-    renderStoryPanel(storyRoot, state, async (storyTitle, description, extra) => {
+    }, async (estimate) => {
+      const story = state.room.story;
+      if (!story || !story.key) {
+        showToast("No story is active for this round.", true);
+        return;
+      }
       try {
-        await roomsApi.updateStory(code, {
-          title: storyTitle,
-          description,
-          key: extra?.key,
-          url: extra?.url,
-        });
+        await roomsApi.recordAgreedEstimate(code, story.key, estimate);
         await refresh();
       } catch (err) {
-        showToast("Could not update story: " + format(err), true);
+        showToast("Could not record estimate: " + format(err), true);
       }
     });
+    renderStoryPanel(storyRoot, state, refresh);
     renderPlayersPanel(playersRoot, state, {
       onReveal: async () => {
         try {

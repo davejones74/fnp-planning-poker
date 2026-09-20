@@ -1,4 +1,4 @@
-import type { PublicRoom } from "../../../shared/types.ts";
+import type { PublicRoom, SessionStory } from "../../../shared/types.ts";
 
 export class ApiClientError extends Error {
   readonly code: string;
@@ -54,6 +54,15 @@ export interface StoryPayload {
   description: string;
   key?: string;
   url?: string;
+}
+
+export interface ImportSummary {
+  ok: boolean;
+  imported: number;
+  duplicatesSkipped: number;
+  invalidSkipped: number;
+  limitSkipped: number;
+  stories: SessionStory[];
 }
 
 export interface NegotiateResult {
@@ -120,6 +129,40 @@ export const roomsApi = {
       method: "PUT",
       body: JSON.stringify({ participantId, ...story }),
     });
+  },
+
+  importStories(code: string, stories: StoryPayload[]): Promise<ImportSummary> {
+    const participantId = sessionParticipantId(code);
+    return request<ImportSummary>(`/api/rooms/${code}/stories/import`, {
+      method: "POST",
+      body: JSON.stringify({ participantId, stories }),
+    });
+  },
+
+  startStoryEstimation(code: string, key: string): Promise<{ ok: boolean; story: SessionStory }> {
+    const participantId = sessionParticipantId(code);
+    return request<{ ok: boolean; story: SessionStory }>(
+      `/api/rooms/${code}/stories/${encodeURIComponent(key)}/start`,
+      {
+        method: "POST",
+        body: JSON.stringify({ participantId }),
+      },
+    );
+  },
+
+  recordAgreedEstimate(
+    code: string,
+    key: string,
+    estimate: string,
+  ): Promise<{ ok: boolean; story: SessionStory }> {
+    const participantId = sessionParticipantId(code);
+    return request<{ ok: boolean; story: SessionStory }>(
+      `/api/rooms/${code}/stories/${encodeURIComponent(key)}/estimate`,
+      {
+        method: "POST",
+        body: JSON.stringify({ participantId, estimate }),
+      },
+    );
   },
 
   removeParticipant(code: string, targetParticipantId: string): Promise<{ ok: boolean }> {

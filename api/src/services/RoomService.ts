@@ -4,6 +4,7 @@ import type {
   PublicRoom,
   Room,
   Round,
+  SessionStory,
   Story,
 } from "../../../shared/types.ts";
 import { DECKS } from "../../../shared/decks.ts";
@@ -11,8 +12,11 @@ import { isValidRoomCode } from "../../../shared/validation.ts";
 import {
   DISPLAY_NAME_MAX,
   MAX_ROOM_PARTICIPANTS,
+  MAX_SESSION_STORIES,
   STORY_DESCRIPTION_MAX,
+  STORY_KEY_MAX,
   STORY_TITLE_MAX,
+  STORY_URL_MAX,
 } from "../../../shared/validation.ts";
 import { ApiError } from "../shared/errors.ts";
 import { generateId } from "../shared/ids.ts";
@@ -80,6 +84,7 @@ export class RoomService {
       participants: new Map([[facilitator.id, facilitator]]),
       currentRound: round,
       deck: [...this.deck],
+      stories: [],
     };
     await this.repo.create(room);
     return { room, participant: facilitator };
@@ -259,6 +264,168 @@ export class RoomService {
       story,
     });
     return story;
+  }
+
+  /**
+   * Adds stories to the room's session backlog (upsert by key). Existing
+   * stories keep their status and agreed estimate. Returns an import summary
+   * and the full backlog.
+   */
+  async importStories(
+    code: string,
+    participantId: string,
+    raw: unknown,
+  ): Promise<{
+    imported: number;
+    duplicatesSkipped: number;
+    invalidSkipped: number;
+    limitSkipped: number;
+    stories: SessionStory[];
+  }> {
+    const room = await this.loadRoom(code);
+    this.requireFacilitator(room, participantId);
+
+    const items = this.readRawStories(raw);
+    const byKey = new Map(room.stories.map((story) => [story.key, story]));
+    let imported = 0;
+    let duplicatesSkipped = 0;
+    let invalidSkipped = 0;
+    let limitSkipped = 0;
+
+    for (const item of items) {
+      const parsed = this.parseImportedStory(item);
+      if (!parsed) {
+        invalidSkipped++;
+        continue;
+      }
+      const existing = byKey.get(parsed.key);
+      if (existing) {
+        existing.title = parsed.title;
+        existing.description = parsed.description;
+        existing.url = parsed.url;
+        duplicatesSkipped++;
+        continue;
+      }
+      if (room.stories.length >= MAX_SESSION_STORIES) {
+        limitSkipped++;
+        continue;
+      }
+      const story: SessionStory = {
+        key: parsed.key,
+        title: parsed.title,
+        description: parsed.description,
+        status: "ready",
+      };
+      if (parsed.url) story.url = parsed.url;
+      room.stories.push(story);
+      byKey.set(story.key, story);
+      imported++;
+    }
+
+    await this.persist(room);
+    await this.publishStories(room);
+    return {
+      imported,
+      duplicatesSkipped,
+      invalidSkipped,
+      limitSkipped,
+      stories: room.stories.map((s) => ({ ...s })),
+    };
+  }
+
+  /**
+   * Selects a backlog story and starts a new estimation round associated with
+   * it. Selecting a story does not start the round on its own — the
+   * facilitator must explicitly start the estimation here.
+   */
+  async startStoryEstimation(
+    code: string,
+    participantId: string,
+    rawKey: unknown,
+  ): Promise<{ room: Room; round: Round; story: SessionStory }> {
+    const room = await this.loadRoom(code);
+    this.requireFacilitator(room, participantId);
+    const key = this.requireStoryKey(rawKey);
+    const story = this.requireSessionStory(room, key);
+    if (story.status === "estimated") {
+      throw new ApiError(
+        "STORY_ALREADY_ESTIMATED",
+        409,
+        `${key} has already been estimated.`,
+      );
+    }
+
+    story.status = "estimating";
+    const round: Round = {
+      id: generateId("r"),
+      story: { ...story },
+      status: "voting",
+      startedAt: this.iso(this.now()),
+    };
+    for (const participant of room.participants.values()) {
+      participant.selectedCard = undefined;
+    }
+    room.currentRound = round;
+    await this.persist(room);
+    await this.publishStories(room);
+    await this.pubsub.publishToRoom(room.code, {
+      type: "round.started",
+      roomCode: room.code,
+      roundId: round.id,
+      story: round.story,
+      deck: room.deck,
+    });
+    return { room, round, story: { ...story } };
+  }
+
+  /**
+   * Records the facilitator's agreed estimate for the current round's story.
+   * Only the facilitator may do this, the round must be revealed, and the
+   * estimate must be a valid deck value. The story moves to `estimated` and
+   * the room is prepared for the next (story-free) round.
+   */
+  async recordAgreedEstimate(
+    code: string,
+    participantId: string,
+    rawKey: unknown,
+    rawEstimate: unknown,
+  ): Promise<{ story: SessionStory }> {
+    const room = await this.loadRoom(code);
+    this.requireFacilitator(room, participantId);
+    const key = this.requireStoryKey(rawKey);
+    const story = this.requireSessionStory(room, key);
+    if (room.currentRound.status !== "revealed") {
+      throw new ApiError("VOTING_CLOSED", 409, "Reveal the cards before recording an estimate.");
+    }
+    if (!room.currentRound.story || room.currentRound.story.key !== key) {
+      throw new ApiError("STORY_NOT_ACTIVE", 409, `${key} is not the current estimation story.`);
+    }
+    if (typeof rawEstimate !== "string" || !room.deck.includes(rawEstimate as CardValue)) {
+      throw new ApiError("INVALID_CARD", 400, "Unknown card value for this deck.");
+    }
+
+    story.agreedEstimate = rawEstimate as CardValue;
+    story.estimatedAt = this.iso(this.now());
+    story.status = "estimated";
+
+    const round: Round = {
+      id: generateId("r"),
+      status: "voting",
+      startedAt: this.iso(this.now()),
+    };
+    for (const participant of room.participants.values()) {
+      participant.selectedCard = undefined;
+    }
+    room.currentRound = round;
+    await this.persist(room);
+    await this.publishStories(room);
+    await this.pubsub.publishToRoom(room.code, {
+      type: "round.started",
+      roomCode: room.code,
+      roundId: round.id,
+      deck: room.deck,
+    });
+    return { story: { ...story } };
   }
 
   async removeParticipant(
@@ -447,6 +614,86 @@ export class RoomService {
       if (url) story.url = url;
     }
     return story;
+  }
+
+  private readRawStories(raw: unknown): Array<Record<string, unknown>> {
+    if (typeof raw !== "object" || raw === null) {
+      throw new ApiError("INVALID_REQUEST", 400, "Import bodies must contain a stories array.");
+    }
+    const { stories: items } = raw as { stories?: unknown };
+    if (!Array.isArray(items)) {
+      throw new ApiError("INVALID_REQUEST", 400, "Import bodies must contain a stories array.");
+    }
+    const records: Array<Record<string, unknown>> = [];
+    for (const item of items) {
+      if (typeof item === "object" && item !== null) {
+        records.push(item as Record<string, unknown>);
+      }
+    }
+    return records;
+  }
+
+  /** Validates a single imported story, returning null when the row is unusable. */
+  private parseImportedStory(
+    raw: Record<string, unknown>,
+  ): { key: string; title: string; description: string; url?: string } | null {
+    const rawKey = raw.key;
+    if (typeof rawKey !== "string") return null;
+    const key = rawKey.trim().toUpperCase();
+    if (key.length < 1 || key.length > STORY_KEY_MAX) return null;
+
+    const rawTitle = raw.title;
+    if (typeof rawTitle !== "string") return null;
+    const title = rawTitle.trim();
+    if (title.length < 1 || title.length > STORY_TITLE_MAX) return null;
+
+    let description = "";
+    if (typeof raw.description === "string") {
+      description = raw.description.trim().slice(0, STORY_DESCRIPTION_MAX);
+    }
+
+    const parsed: { key: string; title: string; description: string; url?: string } = {
+      key,
+      title,
+      description,
+    };
+    if (typeof raw.url === "string") {
+      const url = raw.url.trim();
+      if (url.length > STORY_URL_MAX) return null;
+      if (url) parsed.url = url;
+    }
+    return parsed;
+  }
+
+  private requireStoryKey(raw: unknown): string {
+    if (typeof raw !== "string") {
+      throw new ApiError("INVALID_REQUEST", 400, "Story key is required.");
+    }
+    const key = raw.trim().toUpperCase();
+    if (key.length < 1 || key.length > STORY_KEY_MAX) {
+      throw new ApiError(
+        "INVALID_REQUEST",
+        400,
+        `Story key must be between 1 and ${STORY_KEY_MAX} characters.`,
+      );
+    }
+    return key;
+  }
+
+  private requireSessionStory(room: Room, key: string): SessionStory {
+    const story = room.stories.find((s) => s.key === key);
+    if (!story) {
+      throw new ApiError("STORY_NOT_FOUND", 404, `No story found with key ${key}.`);
+    }
+    return story;
+  }
+
+  private async publishStories(room: Room): Promise<void> {
+    await this.pubsub.publishToRoom(room.code, {
+      type: "stories.updated",
+      roomCode: room.code,
+      stories: room.stories.map((s) => ({ ...s })),
+    });
   }
 
   private touch(room: Room): void {

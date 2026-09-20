@@ -22,6 +22,9 @@ import { vote } from "./functions/vote.ts";
 import { reveal } from "./functions/reveal.ts";
 import { newRound as newRoundFn } from "./functions/newRound.ts";
 import { updateStory } from "./functions/updateStory.ts";
+import { importStories } from "./functions/importStories.ts";
+import { startStoryEstimation } from "./functions/startStoryEstimation.ts";
+import { recordAgreedEstimate } from "./functions/recordAgreedEstimate.ts";
 import { removeParticipant } from "./functions/removeParticipant.ts";
 import { getParticipants } from "./functions/getParticipants.ts";
 import { negotiate } from "./functions/negotiate.ts";
@@ -64,6 +67,9 @@ const routes: Route[] = [
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/reveal$/, handler: wrap(reveal) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/round$/, handler: wrap(newRoundFn) },
   { method: "PUT", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/story$/, handler: wrap(updateStory) },
+  { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/stories\/import$/, handler: wrap(importStories) },
+  { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/stories\/[^/]+\/start$/, handler: wrap(startStoryEstimation) },
+  { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/stories\/[^/]+\/estimate$/, handler: wrap(recordAgreedEstimate) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/participants\/remove$/, handler: wrap(removeParticipant) },
   { method: "GET", pattern: /^\/api\/negotiate$/, handler: wrap(negotiate) },
   { method: "POST", pattern: /^\/api\/negotiate$/, handler: wrap(negotiate) },

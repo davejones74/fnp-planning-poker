@@ -4,6 +4,9 @@ export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const DISPLAY_NAME_MAX = 30;
 export const STORY_TITLE_MAX = 100;
 export const STORY_DESCRIPTION_MAX = 500;
+export const STORY_KEY_MAX = 20;
+export const STORY_URL_MAX = 500;
+export const MAX_SESSION_STORIES = 200;
 
 /**
  * Hard cap on participants per room. Azure Web PubSub Free_F1 allows 20
