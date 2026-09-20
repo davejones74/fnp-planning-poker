@@ -623,6 +623,8 @@ export function renderStoryPanel(
       text: label,
     });
   }
+
+  render();
 }
 
 function nextManualKey(stories: SessionStory[]): string {
