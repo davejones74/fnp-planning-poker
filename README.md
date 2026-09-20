@@ -43,7 +43,8 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
 - The story panel has **HOW IT WORKS / STORIES TO ESTIMATE / COMPLETED** tabs, an
   "Estimation session: n / total" progress bar, a **current-story banner** above the deck,
   a completed table (key, title, agreed estimate, completion time), and a discussion
-  prompt when revealed estimates differ
+  prompt when revealed estimates differ; the import caveats (snapshot only, no write-back,
+  room-lifetime backlog) sit behind a small **info tooltip** so the guide stays skim-friendly
 - Default deck: **XS, S, M, L, XL, XXL, ?, coffee** (coffee = break; see `shared/decks.ts` for the fibonacci alternative)
 - Participants pick a card; only a ✓ (voted) status is visible to others
 - Facilitator reveals the cards; the reveal replaces the deck with a **vote chart** — a

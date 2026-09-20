@@ -1223,6 +1223,73 @@ button.danger:hover {
   font-size: 13px;
 }
 
+.story-tooltip-wrap {
+  position: relative;
+  display: inline-block;
+  margin: 0 0 8px;
+}
+
+.story-tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.story-tooltip-trigger:hover,
+.story-tooltip-trigger:focus-visible {
+  color: var(--primary);
+  border-color: var(--primary);
+  outline: none;
+}
+
+.story-tooltip-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--panel-border);
+  color: var(--panel);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.story-tooltip-pop {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  min-width: 300px;
+  max-width: 420px;
+  padding: 6px 12px 2px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms;
+}
+
+.story-tooltip-wrap:hover .story-tooltip-pop,
+.story-tooltip-wrap:focus-within .story-tooltip-pop {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.story-tooltip-pop .story-notes {
+  margin: 0;
+}
+
 .sizing-table {
   width: 100%;
   border-collapse: collapse;

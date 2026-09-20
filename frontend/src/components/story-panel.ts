@@ -193,7 +193,25 @@ export function renderStoryPanel(
     ];
     const noteList = el("ul", { class: "story-notes" });
     for (const note of notes) noteList.append(el("li", { text: note }));
-    intro.append(noteList);
+
+    const notesTipId = "story-notes-tip";
+    const notesTrigger = el(
+      "button",
+      {
+        type: "button",
+        class: "story-tooltip-trigger",
+        "aria-describedby": notesTipId,
+      },
+      el("span", { class: "story-tooltip-icon", "aria-hidden": "true" }, "i"),
+      "Importing details",
+    );
+    const tooltipWrap = el(
+      "span",
+      { class: "story-tooltip-wrap" },
+      notesTrigger,
+      el("div", { class: "story-tooltip-pop", id: notesTipId, role: "tooltip" }, noteList),
+    );
+    intro.append(tooltipWrap);
 
     intro.append(el("h4", { class: "story-intro-sub", text: "F&P sizing" }));
     const sizing = el("table", { class: "sizing-table" });
