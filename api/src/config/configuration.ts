@@ -49,7 +49,7 @@ export function loadConfiguration(
     jiraRedirectUri: env.JIRA_REDIRECT_URI || undefined,
     jiraSite: env.JIRA_SITE || undefined,
     jiraMock: env.JIRA_MOCK === "1" || env.JIRA_MOCK?.toLowerCase() === "true",
-    jiraHost: env.JIRA_HOST?.trim() || undefined,
+    jiraHost: env.JIRA_HOST?.trim() || "https://hmcts.atlassian.net",
     jiraProjectKey: (env.JIRA_PROJECT_KEY ?? env.KEY)?.trim() || undefined,
   };
 }

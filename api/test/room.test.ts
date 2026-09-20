@@ -200,10 +200,10 @@ describe("configuration sanity", () => {
     assert.equal(viaExplicit.jiraProjectKey, "FNP");
   });
 
-  it("leaves the Jira import config unset when not provided", async () => {
+  it("defaults the Jira host and leaves the project key unset when not provided", async () => {
     const { loadConfiguration } = await import("../src/config/configuration.ts");
     const config = loadConfiguration({} as NodeJS.ProcessEnv);
-    assert.equal(config.jiraHost, undefined);
+    assert.equal(config.jiraHost, "https://hmcts.atlassian.net");
     assert.equal(config.jiraProjectKey, undefined);
   });
 });

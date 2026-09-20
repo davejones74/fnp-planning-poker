@@ -17,6 +17,79 @@ function decodeXml(value: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/** Raw (still-encoded) content of a child element. */
+function rawChildContent(xml: string, name: string): string {
+  const match = xml.match(
+    new RegExp(`<${name}[^>]*>([\\s\\S]*?)<\\/${name}>`, "i"),
+  );
+  return match ? match[1] ?? "" : "";
+}
+
+/**
+ * Extracts the inner HTML of the element with id="descriptionArea" (a table
+ * cell in Jira's RSS export) using balanced tag-nesting until its closing tag.
+ */
+function extractDescriptionArea(html: string): string | undefined {
+  const open = html.match(
+    /<(td|div)[^>]*id=["']descriptionArea["'][^>]*>/i,
+  );
+  if (!open) return undefined;
+  const tag = open[1]!;
+  const rest = html.slice((open.index ?? 0) + open[0].length);
+  const re = new RegExp(`<${tag}\\b[^>]*>|<\\/${tag}>`, "gi");
+  let depth = 1;
+  let m: RegExpExecArray | null;
+  let end = rest.length;
+  while ((m = re.exec(rest)) !== null) {
+    if (m[0].startsWith("</")) {
+      depth -= 1;
+      if (depth === 0) {
+        end = m.index;
+        break;
+      }
+    } else {
+      depth += 1;
+    }
+  }
+  return rest.slice(0, end);
+}
+
+/**
+ * Converts Jira export HTML descriptions to plain text. The RSS feed
+ * entity-encodes the whole issue page (CSS style block, header tables), so the
+ * style/script blocks are dropped and the `#descriptionArea` cell is preferred
+ * before tags are flattened.
+ */
+function descriptionToText(raw: string): string {
+  const decodeTags = (value: string): string =>
+    value
+      .replace(/<!\[CDATA\[/g, "")
+      .replace(/\]\]>/g, "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;|&#39;/g, "'");
+
+  let s = decodeTags(raw);
+  s = s
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ");
+  const area = extractDescriptionArea(s);
+  if (area !== undefined) s = area;
+  s = s
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|li|tr|ol|ul|h[1-6]|table|blockquote)>\s*/gi, "\n")
+    .replace(/<\/t[dh]>\s*/gi, " | ")
+    .replace(/<[^>]+>/g, "");
+  return s
+    .replace(/&nbsp;|&#160;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;|&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function childContent(xml: string, name: string): string {
   const match = xml.match(
     new RegExp(`<${name}[^>]*>([\\s\\S]*?)<\\/${name}>`, "i"),
@@ -77,7 +150,7 @@ export function parseJiraRss(xml: string): ImportResult {
       .replace(/^\[[A-Za-z][A-Za-z0-9_]*-\d+\][\s:]*/i, "")
       .replace(/^[A-Za-z][A-Za-z0-9_]*-\d+\s*[-–:]\s*/i, "")
       .trim();
-    const description = decodeXml(childContent(item, "description"))
+    const description = descriptionToText(rawChildContent(item, "description"))
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, DESCRIPTION_MAX - 1);

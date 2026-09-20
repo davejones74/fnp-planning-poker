@@ -31,10 +31,11 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
 - Facilitator can set/edit the story (e.g. JIRA-123 + description)
 - **Import stories into a session backlog** — the facilitator uploads a Jira CSV (or
   RSS/XML) export; issues are parsed in the browser (the file never leaves the machine),
-  added to the room's backlog, and each story links back to its Jira ticket via the
-  configured site. Duplicate keys are refreshed in place, invalid rows are skipped, and
-  the backlog is capped at 200 stories. Live Jira fetch (OAuth) is implemented but
-  disabled in the UI until credentials are provided
+  and the parsed stories are shown with a checkbox each (all selected) so you can import
+  just the ones you want. Imported stories join the room's backlog, and each story links
+  back to its Jira ticket via the configured site. Duplicate keys are refreshed in place,
+  invalid rows are skipped, and the backlog is capped at 200 stories. Live Jira fetch
+  (OAuth) is implemented but disabled in the UI until credentials are provided
 - **Story-based estimation (optional)** — with stories in the backlog the facilitator can
   also add manual stories (synthetic `MAN-` keys), start one story at a time, and after
   reveal record the agreed estimate from a deck dropdown (coffee excluded). Recording
@@ -138,7 +139,7 @@ run with `node --env-file=.env api/src/server.ts`.
 | `WEB_PUBSUB_HUB` | `fnp` | Web PubSub hub name all rooms connect through |
 | `COSMOS_TABLE_CONNECTION_STRING` | empty | Cosmos DB Table API connection string; empty = in-memory `RoomRepository` |
 | `WEBSITE_HOSTNAME` | empty | Azure-assigned hostname (used to build absolute URLs) |
-| `JIRA_HOST` | empty | Base site for imported issues; a key links to `<JIRA_HOST>/browse/<KEY>` |
+| `JIRA_HOST` | `https://hmcts.atlassian.net` | Base site for imported issues; a key links to `<JIRA_HOST>/browse/<KEY>` |
 | `KEY` / `JIRA_PROJECT_KEY` | empty | Project prefix used to filter imported issues (`KEY=PAY`); `JIRA_PROJECT_KEY` wins when both are set |
 | `JIRA_CLIENT_ID` / `JIRA_CLIENT_SECRET` | empty | Jira Cloud OAuth app credentials for the (currently disabled) live fetch |
 | `JIRA_REDIRECT_URI` | `http://localhost:8080/api/jira/callback` | Callback URL of the OAuth app; must match what the browser hits |
@@ -187,11 +188,15 @@ entirely in the browser** — the file is never uploaded:
 2. The format is sniffed automatically (`frontend/src/import/`). CSV columns are located
    by header (`Summary`, `Issue key`, `Description`), quotes/newlines/CRLF are handled,
    and Jira wiki markup is flattened to plain text (descriptions truncated to 500 chars).
-   For XML both the per-issue XML view and the RSS feed are understood. Key comes from a
+   For XML both the per-issue XML view and the RSS feed are understood. RSS/XML
+   descriptions are cleaned from HTML (style/script blocks dropped, the `#descriptionArea`
+   section preferred). Key comes from a
    `<key>` element, a `/browse/KEY` link or the title.
 3. A filter's RSS is an **activity feed** (it lists comments). Those comment items are
    skipped, and when nothing usable is found the dialog suggests the CSV export instead.
-4. Imported issues are added to the room's **session backlog** (upsert by issue key,
+4. The parsed stories are listed with a checkbox each (all selected); uncheck any you
+   want to leave out, or use **Select all / None**, then import the checked ones.
+5. Imported issues are added to the room's **session backlog** (upsert by issue key,
    preserving each story's status and any recorded estimate). Every story's key links to
    `<JIRA_HOST>/browse/<KEY>`, and `KEY` (or `JIRA_PROJECT_KEY`) filters the list to a
    single project. From the backlog the facilitator starts one story at a time for the

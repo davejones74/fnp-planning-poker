@@ -1214,6 +1214,10 @@ button.danger:hover {
   margin: 3px 0;
 }
 
+.story-steps li strong {
+  color: var(--primary);
+}
+
 .story-notes li {
   color: var(--text-muted);
   font-size: 13px;
@@ -1431,7 +1435,12 @@ button.danger:hover {
   background: var(--input-bg);
   display: flex;
   gap: 10px;
-  align-items: baseline;
+  align-items: center;
+  cursor: pointer;
+}
+
+.jira-story-item.unselected {
+  opacity: 0.55;
 }
 
 .jira-story-key {
@@ -1446,6 +1455,32 @@ button.danger:hover {
 .jira-story-title {
   font-size: 14px;
   color: var(--text);
+}
+
+.jira-story-select {
+  margin-left: auto;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.jira-select-links {
+  display: flex;
+  gap: 14px;
+  margin-top: -4px;
+}
+
+.jira-select-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.jira-select-link:hover {
+  text-decoration: underline;
 }
 
 /* ---------- Current story (deck banner) ---------- */

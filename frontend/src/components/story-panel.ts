@@ -156,21 +156,37 @@ export function renderStoryPanel(
       el("h4", { class: "story-intro-sub", text: "How story-based estimation works" }),
     );
 
-    const steps = [
-      "Prepare — export the Jira stories you want to estimate from the estimation filter.",
-      "Import — upload the CSV into this estimation session.",
-      "Select — the facilitator selects a story to estimate.",
-      "Estimate — everyone independently selects an estimate.",
-      "Reveal & discuss — reveal the cards and discuss differences in the estimates.",
-      "Record — the facilitator records the agreed estimate and moves to the next story.",
+    const steps: Array<HTMLElement> = [
+      el(
+        "li",
+        {},
+        "Prepare — open the ",
+        externalLink("estimation filter", FILTER_URL),
+        " in Jira and export the stories you want to estimate.",
+      ),
+      el(
+        "li",
+        {},
+        "Import — upload the export into this estimation session. The working export options are ",
+        el("strong", { text: "XML" }),
+        ", ",
+        el("strong", { text: "CSV – all fields" }),
+        " and ",
+        el("strong", { text: "RSS – without comments" }),
+        ".",
+      ),
+      el("li", { text: "Select — the facilitator selects a story to estimate." }),
+      el("li", { text: "Estimate — everyone independently selects an estimate." }),
+      el("li", { text: "Reveal & discuss — reveal the cards and discuss differences in the estimates." }),
+      el("li", { text: "Record — the facilitator records the agreed estimate and moves to the next story." }),
     ];
     const list = el("ol", { class: "story-steps" });
-    for (const step of steps) list.append(el("li", { text: step }));
+    for (const step of steps) list.append(step);
     intro.append(list);
 
     const notes = [
-      "Jira is not directly connected to this application.",
-      "The imported CSV is a snapshot for the current estimation session only.",
+      "Stories are imported as a snapshot — the app has no live connection to Jira.",
+      "The backlog is kept for this room's lifetime (rooms expire after 24 hours without activity).",
       "Nothing is written back to Jira.",
       "Jira issue links are provided for reference.",
       "Importing stories is optional — Planning Poker works the same without them.",
@@ -439,27 +455,81 @@ export function renderStoryPanel(
 
     function renderStories(result: ImportResult): void {
       clear(dialog);
-      dialog.append(
-        el("p", {
-          class: "jira-dialog-title",
-          text:
-            result.stories.length > 0
-              ? `${result.stories.length} item${result.stories.length === 1 ? "" : "s"} ready to import`
-              : "No stories found",
-        }),
-      );
+
+      const selected = new Set<number>(result.stories.map((_, i) => i));
+      const rows: Array<{ item: HTMLElement; box: HTMLInputElement }> = [];
+
+      const countText = el("p", {
+        class: "jira-dialog-title",
+        text:
+          result.stories.length > 0
+            ? `${result.stories.length} item${result.stories.length === 1 ? "" : "s"} ready to import`
+            : "No stories found",
+      });
+      dialog.append(countText);
 
       const list = el("div", { class: "jira-story-list" });
-      for (const story of result.stories) {
-        list.append(
-          el(
-            "div",
-            { class: "jira-story-item" },
-            el("span", { class: "jira-story-key", text: story.key }),
-            el("span", { class: "jira-story-title", text: story.title }),
-          ),
+      result.stories.forEach((story, i) => {
+        const item = el("label", { class: "jira-story-item", title: story.title });
+        const box = el("input", {
+          type: "checkbox",
+          class: "jira-story-select",
+        }) as HTMLInputElement;
+        box.checked = true;
+        box.setAttribute("aria-label", story.key);
+        box.addEventListener("change", () => {
+          if (box.checked) {
+            selected.add(i);
+            item.classList.remove("unselected");
+          } else {
+            selected.delete(i);
+            item.classList.add("unselected");
+          }
+          refresh();
+        });
+        rows.push({ item, box });
+        item.append(
+          el("span", { class: "jira-story-key", text: story.key }),
+          el("span", { class: "jira-story-title", text: story.title }),
+          box,
         );
+        list.append(item);
+      });
+
+      function applySelection(): void {
+        rows.forEach((row, i) => {
+          row.box.checked = selected.has(i);
+          row.item.classList.toggle("unselected", !row.box.checked);
+        });
+        refresh();
       }
+
+      if (result.stories.length > 0) {
+        const selectLinks = el("div", { class: "jira-select-links" });
+        const selectAll = el("button", {
+          type: "button",
+          class: "jira-select-link",
+          text: "Select all",
+        });
+        const selectNone = el("button", {
+          type: "button",
+          class: "jira-select-link",
+          text: "None",
+        });
+        selectAll.addEventListener("click", () => {
+          result.stories.forEach((_, i) => selected.add(i));
+          applySelection();
+        });
+        selectNone.addEventListener("click", () => {
+          selected.clear();
+          applySelection();
+        });
+        selectLinks.append(selectAll, selectNone);
+        dialog.append(selectLinks);
+      }
+
+      dialog.append(list);
+
       if (result.stories.length === 0) {
         list.append(
           el("p", {
@@ -479,22 +549,41 @@ export function renderStoryPanel(
           }),
         );
       }
-      dialog.append(list);
 
       const actionButtons = el("div", { class: "editor-buttons" });
+      let importBtn: HTMLButtonElement | null = null;
+
+      function refresh(): void {
+        const n = selected.size;
+        countText.textContent =
+          n === result.stories.length && result.stories.length > 0
+            ? `${result.stories.length} item${result.stories.length === 1 ? "" : "s"} selected`
+            : `${n} of ${result.stories.length} item${result.stories.length === 1 ? "" : "s"} selected`;
+        if (importBtn) {
+          importBtn.textContent = `Import ${n} ${storyWord(n)}`;
+          importBtn.disabled = n === 0;
+        }
+      }
+
       if (result.stories.length > 0) {
-        const importAll = el("button", {
+        importBtn = el("button", {
           type: "button",
-          text: `Import ${result.stories.length} story${result.stories.length === 1 ? "" : "s"}`,
+          text: `Import ${result.stories.length} ${storyWord(result.stories.length)}`,
         });
-        importAll.addEventListener("click", () => {
-          importAll.disabled = true;
-          const candidates: StoryPayload[] = result.stories.map((s) => ({
-            key: s.key,
-            title: s.title,
-            description: s.description,
-            url: s.url,
-          }));
+        importBtn.addEventListener("click", () => {
+          importBtn!.disabled = true;
+          const candidates: StoryPayload[] = result.stories
+            .filter((_, i) => selected.has(i))
+            .map((s) => ({
+              key: s.key,
+              title: s.title,
+              description: s.description,
+              url: s.url,
+            }));
+          if (candidates.length === 0) {
+            importBtn!.disabled = false;
+            return;
+          }
           void roomsApi
             .importStories(state.room.code, candidates)
             .then(async (summary) => {
@@ -505,11 +594,12 @@ export function renderStoryPanel(
               await onChanged();
             })
             .catch((err: unknown) => {
-              importAll.disabled = false;
+              importBtn!.disabled = false;
               showToast(formatError(err, "import stories"), true);
             });
         });
-        actionButtons.append(importAll);
+        actionButtons.append(importBtn);
+        refresh();
       }
       const close = el("button", { type: "button", class: "ghost", text: "Close" });
       close.addEventListener("click", () => dialog.remove());
@@ -639,9 +729,13 @@ function nextManualKey(stories: SessionStory[]): string {
   return `MAN-${max + 1}`;
 }
 
+function storyWord(n: number): string {
+  return n === 1 ? "story" : "stories";
+}
+
 function summaryText(summary: ImportSummary): string {
   const plural = (n: number): string => (n === 1 ? "" : "s");
-  const parts = [`${summary.imported} story${plural(summary.imported)} imported`];
+  const parts = [`${summary.imported} ${storyWord(summary.imported)} imported`];
   if (summary.duplicatesSkipped > 0) {
     parts.push(`${summary.duplicatesSkipped} duplicate${plural(summary.duplicatesSkipped)} skipped`);
   }
