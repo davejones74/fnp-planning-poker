@@ -44,9 +44,10 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
   "Estimation session: n / total" progress bar, a **current-story banner** above the deck,
   a completed table (key, title, agreed estimate, completion time), a discussion
   prompt when revealed estimates differ, and — once the last story is estimated — it
-  switches itself to the **COMPLETED** tab; the import caveats (snapshot only, no
-  write-back, room-lifetime backlog) sit behind a small **info tooltip** so the guide
-  stays skim-friendly
+  switches itself to the **COMPLETED** tab. Completed stories can be ticked off (with
+  **Select all / None**) and **Dismissed** to remove them from the session backlog; the
+  import caveats (snapshot only, no write-back, room-lifetime backlog) sit behind a
+  small **info tooltip** so the guide stays skim-friendly
 - Default deck: **XS, S, M, L, XL, XXL, ?, coffee** (coffee = break; see `shared/decks.ts` for the fibonacci alternative)
 - Participants pick a card; only a ✓ (voted) status is visible to others
 - Facilitator reveals the cards; the reveal replaces the deck with a **vote chart** — a
@@ -167,6 +168,7 @@ with the matching HTTP status. Room codes use the alphabet
 | `POST` | `/api/rooms/{code}/stories/import` | Facilitator-only; `{ participantId, stories: [{ key, title, description, url? }] }` → upserts the backlog and returns `{ imported, duplicatesSkipped, invalidSkipped, limitSkipped, stories }` |
 | `POST` | `/api/rooms/{code}/stories/{key}/start` | Facilitator-only; marks the story `estimating` and starts a voting round carrying it |
 | `POST` | `/api/rooms/{code}/stories/{key}/estimate` | Facilitator-only; `{ participantId, estimate }` — revealed round + valid deck value, records the agreed estimate and opens a story-free round |
+| `POST` | `/api/rooms/{code}/stories/dismiss` | Facilitator-only; `{ participantId, keys: string[] }` — removes the selected `estimated` stories from the backlog, returns `{ dismissed, skipped }` |
 | `POST` | `/api/rooms/{code}/participants/remove` | Facilitator-only; `{ participantId, targetParticipantId }` |
 | `GET` | `/api/config` | Non-secret client config `{ jiraHost, jiraProjectKey }` used by the import dialog |
 | `GET` | `/api/jira/authorize?room=&returnTo=` | Opens the Atlassian consent screen in a popup (mock consent page when `JIRA_MOCK=1`) |
