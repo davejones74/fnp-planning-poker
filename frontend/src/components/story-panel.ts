@@ -38,6 +38,7 @@ const SIZING: Array<[string, string]> = [
 interface PanelUiState {
   tab: TabId;
   selectedKey: string | null;
+  openCount: number | null;
 }
 
 const uiByRoot = new WeakMap<HTMLElement, PanelUiState>();
@@ -54,16 +55,34 @@ export function renderStoryPanel(
   onChanged: () => Promise<void> | void,
 ): void {
   const prior = uiByRoot.get(root);
+  const openNow = state.room.stories.filter((s) => s.status !== "estimated").length;
   const ui: PanelUiState = prior ?? (() => {
     const fresh: PanelUiState = {
-      tab: state.room.stories.length > 0 ? "todo" : "how",
+      tab:
+        state.room.stories.length > 0
+          ? openNow > 0
+            ? "todo"
+            : "done"
+          : "how",
       selectedKey: null,
+      openCount: openNow,
     };
     uiByRoot.set(root, fresh);
     return fresh;
   })();
 
   function render(): void {
+    const open = state.room.stories.filter((s) => s.status !== "estimated").length;
+    if (
+      ui.tab === "todo" &&
+      ui.openCount != null &&
+      ui.openCount > 0 &&
+      open === 0
+    ) {
+      ui.tab = "done";
+      ui.selectedKey = null;
+    }
+    ui.openCount = open;
     clear(root);
     root.append(buildPanel());
   }
