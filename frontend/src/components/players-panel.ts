@@ -78,7 +78,11 @@ export function renderPlayersPanel(
 
     const main = el("span", { class: "player-main" });
     const name = el("span", { class: "player-name", text: p.displayName });
-    if (p.isFacilitator) name.append(moderatorCheck());
+    if (p.isFacilitator) name.append(moderatorLabel());
+    if (outliers) {
+      if (p.id === outliers.lowestId) name.append(outlierBadge("optimistic"));
+      else if (p.id === outliers.highestId) name.append(outlierBadge("pessimistic"));
+    }
     main.append(name);
     main.append(
       el("span", {
@@ -168,13 +172,27 @@ function renderStatusHeader(
   return header;
 }
 
-function moderatorCheck(): HTMLElement {
-  const node = el("span", {
-    class: "moderator-check",
-    title: "Moderator",
-    "aria-label": "Moderator",
+function moderatorLabel(): HTMLElement {
+  return el("span", {
+    class: "moderator-label",
+    title: "Facilitator",
+    "aria-label": "Facilitator",
+    text: "[facilitator]",
   });
-  node.append(checkIcon(14));
+}
+
+function outlierBadge(kind: "optimistic" | "pessimistic"): HTMLElement {
+  const optimistic = kind === "optimistic";
+  const node = el("span", {
+    class: "outlier-badge " + kind,
+    title: optimistic
+      ? "Optimistic — lowest estimate"
+      : "Pessimistic — highest estimate",
+    "aria-label": optimistic
+      ? "Optimistic — lowest estimate"
+      : "Pessimistic — highest estimate",
+  });
+  node.textContent = optimistic ? "▼" : "▲";
   return node;
 }
 

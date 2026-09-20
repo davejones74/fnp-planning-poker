@@ -35,9 +35,10 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
 - Facilitator reveals the cards; the reveal replaces the deck with a **vote chart** — a
   donut of all vote values (`?` and coffee included) plus a coloured legend with counts
 - **Outlier prompts:** once revealed, the members holding the **lowest** (optimistic)
-  and **highest** (pessimistic) estimates are subtly highlighted (purple / yellow,
-  with a soft pulse); ties resolve randomly preferring online members, and highlights
-  are skipped when all estimates match
+  and **highest** (pessimistic) estimates are highlighted with a flat purple / yellow
+  row tint and a left accent bar, plus a ▼ / ▲ marker after their name; ties resolve
+  randomly preferring online members, and highlights are skipped when all estimates
+  match
 - A new round clears all selections
 - Participants leaving are marked offline in real time
 - Room running time (and each player's time in the room) is shown live
