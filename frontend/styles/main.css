@@ -8,6 +8,7 @@
   --text-faint: #9299a1;
   --primary: #4895e5;
   --primary-deep: #2b73c7;
+  --accent: #2b73c7;
   --border-card: #d0d7de;
   --card-bg: #ffffff;
   --avatar-bg: #e9eef3;
@@ -27,6 +28,7 @@
   --bg: #0f1720;
   --panel: #161f2b;
   --panel-border: #263240;
+  --accent: #7cb4f2;
   --input-bg: #1d2936;
   --text: #e8eef4;
   --text-muted: #94a3b8;
@@ -1106,19 +1108,31 @@ button.danger:hover {
 
 .import-drop {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 18px 12px;
-  border: 1px dashed var(--border-card);
+  gap: 4px;
+  padding: 26px 14px;
+  border: 2px dashed var(--accent);
   border-radius: var(--radius);
-  color: var(--text-muted);
-  font-size: 14px;
+  background: rgba(43, 115, 199, 0.08);
+  color: var(--accent);
   cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.import-drop-main {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.import-drop-sub {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .import-drop:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: rgba(43, 115, 199, 0.15);
 }
 
 .jira-story-list {
@@ -1548,6 +1562,33 @@ button.danger:hover {
 
 .jira-select-link:hover {
   text-decoration: underline;
+}
+
+.done-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.done-toolbar .jira-select-links {
+  margin-top: 0;
+}
+
+.dismiss-stories-btn {
+  font-size: 13px;
+}
+
+.story-table .done-pick {
+  width: 44px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.done-select {
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 /* ---------- Current story (deck banner) ---------- */

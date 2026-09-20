@@ -165,6 +165,20 @@ export const roomsApi = {
     );
   },
 
+  dismissStories(
+    code: string,
+    keys: string[],
+  ): Promise<{ ok: boolean; dismissed: number; skipped: number }> {
+    const participantId = sessionParticipantId(code);
+    return request<{ ok: boolean; dismissed: number; skipped: number }>(
+      `/api/rooms/${code}/stories/dismiss`,
+      {
+        method: "POST",
+        body: JSON.stringify({ participantId, keys }),
+      },
+    );
+  },
+
   removeParticipant(code: string, targetParticipantId: string): Promise<{ ok: boolean }> {
     const participantId = sessionParticipantId(code);
     return request<{ ok: boolean }>(`/api/rooms/${code}/participants/remove`, {

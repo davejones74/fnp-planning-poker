@@ -428,6 +428,49 @@ export class RoomService {
     return { story: { ...story } };
   }
 
+  /**
+   * Removes the selected stories from the session backlog. Facilitator-only.
+   * Only `estimated` stories can be dismissed; any keys that are missing or
+   * not yet estimated are counted as skipped. Persists and publishes the
+   * updated backlog so every participant sees the change.
+   */
+  async dismissStories(
+    code: string,
+    participantId: string,
+    rawKeys: unknown,
+  ): Promise<{ dismissed: number; skipped: number }> {
+    const room = await this.loadRoom(code);
+    this.requireFacilitator(room, participantId);
+    const keys = this.parseStoryKeys(rawKeys);
+    let dismissed = 0;
+    let skipped = 0;
+    const seen = new Set<string>();
+    const remaining: SessionStory[] = [];
+    for (const story of room.stories) {
+      if (keys.has(story.key)) {
+        seen.add(story.key);
+        if (story.status === "estimated") {
+          dismissed += 1;
+          continue;
+        }
+        skipped += 1;
+      }
+      remaining.push(story);
+    }
+    skipped += keys.size - seen.size;
+    if (keys.size === 0 || dismissed === 0) {
+      throw new ApiError(
+        "INVALID_REQUEST",
+        400,
+        "Select at least one completed story to dismiss.",
+      );
+    }
+    room.stories = remaining;
+    await this.persist(room);
+    await this.publishStories(room);
+    return { dismissed, skipped };
+  }
+
   async removeParticipant(
     code: string,
     facilitatorId: string,
@@ -678,6 +721,19 @@ export class RoomService {
       );
     }
     return key;
+  }
+
+  private parseStoryKeys(rawKeys: unknown): Set<string> {
+    if (!Array.isArray(rawKeys)) {
+      throw new ApiError("INVALID_REQUEST", 400, "keys must be an array of story keys.");
+    }
+    const keys = new Set<string>();
+    for (const raw of rawKeys) {
+      if (typeof raw !== "string") continue;
+      const key = raw.trim().toUpperCase();
+      if (key.length >= 1 && key.length <= STORY_KEY_MAX) keys.add(key);
+    }
+    return keys;
   }
 
   private requireSessionStory(room: Room, key: string): SessionStory {

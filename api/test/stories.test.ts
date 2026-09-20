@@ -256,3 +256,97 @@ describe("RoomService - record agreed estimate", () => {
     );
   });
 });
+
+describe("RoomService - dismiss stories", () => {
+  async function estimateStory(h: ReturnType<typeof makeHarness>, code: string, facilitatorId: string, joinerId: string, key: string) {
+    await h.service.startStoryEstimation(code, facilitatorId, key);
+    await h.service.selectCard(code, facilitatorId, "5");
+    await h.service.selectCard(code, joinerId, "5");
+    await h.service.revealCards(code, facilitatorId);
+    await h.service.recordAgreedEstimate(code, facilitatorId, key, "5");
+  }
+
+  it("removes only the estimated stories that were selected", async () => {
+    const h = makeHarness();
+    const { code, facilitatorId, joinerId } = await roomWithTwo(h);
+    await h.service.importStories(code, facilitatorId, {
+      stories: [
+        { key: "FPB-1", title: "One", description: "" },
+        { key: "FPB-2", title: "Two", description: "" },
+        { key: "MAN-1", title: "Manual", description: "" },
+      ],
+    });
+    await estimateStory(h, code, facilitatorId, joinerId, "FPB-1");
+    await estimateStory(h, code, facilitatorId, joinerId, "FPB-2");
+
+    const result = await h.service.dismissStories(code, facilitatorId, ["fpb-1", "missing-key", "MAN-1"]);
+
+    assert.equal(result.dismissed, 1);
+    assert.equal(result.skipped, 2, "missing + not-yet-estimated keys are skipped");
+    const room = await h.service.getRoom(code);
+    assert.deepEqual(
+      room.stories.map((s) => s.key),
+      ["FPB-2", "MAN-1"],
+    );
+    const updated = h.pubsub.forRoom(code).find((e) => e.event.type === "stories.updated");
+    assert.ok(updated, "stories.updated event expected after dismissing");
+  });
+
+  it("keeps ready and estimating stories that were not selected", async () => {
+    const h = makeHarness();
+    const { code, facilitatorId, joinerId } = await roomWithTwo(h);
+    await h.service.importStories(code, facilitatorId, {
+      stories: [
+        { key: "FPB-1", title: "One", description: "" },
+        { key: "FPB-2", title: "Two", description: "" },
+      ],
+    });
+    await h.service.startStoryEstimation(code, facilitatorId, "FPB-1");
+    await h.service.selectCard(code, facilitatorId, "5");
+    await h.service.selectCard(code, joinerId, "5");
+    await h.service.revealCards(code, facilitatorId);
+    await h.service.recordAgreedEstimate(code, facilitatorId, "FPB-1", "5");
+    await h.service.startStoryEstimation(code, facilitatorId, "FPB-2");
+    await h.service.selectCard(code, facilitatorId, "5");
+    await h.service.selectCard(code, joinerId, "5");
+
+    const result = await h.service.dismissStories(code, facilitatorId, ["FPB-1", "FPB-2"]);
+
+    assert.equal(result.dismissed, 1);
+    const room = await h.service.getRoom(code);
+    assert.deepEqual(room.stories.map((s) => s.key), ["FPB-2"], "estimating story is kept");
+    assert.equal(room.stories[0]?.status, "estimating");
+  });
+
+  it("rejects an empty or invalid selection", async () => {
+    const h = makeHarness();
+    const { code, facilitatorId, joinerId } = await roomWithTwo(h);
+    await h.service.importStories(code, facilitatorId, {
+      stories: [{ key: "FPB-1", title: "One", description: "" }],
+    });
+    await estimateStory(h, code, facilitatorId, joinerId, "FPB-1");
+
+    await assert.rejects(
+      h.service.dismissStories(code, facilitatorId, []),
+      (err: unknown) => err instanceof ApiError && err.code === "INVALID_REQUEST",
+    );
+    await assert.rejects(
+      h.service.dismissStories(code, facilitatorId, "not-an-array"),
+      (err: unknown) => err instanceof ApiError && err.code === "INVALID_REQUEST",
+    );
+  });
+
+  it("rejects a dismiss from a non-facilitator", async () => {
+    const h = makeHarness();
+    const { code, facilitatorId, joinerId } = await roomWithTwo(h);
+    await h.service.importStories(code, facilitatorId, {
+      stories: [{ key: "FPB-1", title: "One", description: "" }],
+    });
+    await estimateStory(h, code, facilitatorId, joinerId, "FPB-1");
+
+    await assert.rejects(
+      h.service.dismissStories(code, joinerId, ["FPB-1"]),
+      (err: unknown) => err instanceof ApiError && err.code === "NOT_FACILITATOR",
+    );
+  });
+});

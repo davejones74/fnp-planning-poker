@@ -39,6 +39,7 @@ interface PanelUiState {
   tab: TabId;
   selectedKey: string | null;
   openCount: number | null;
+  dismissSelected: string[];
 }
 
 const uiByRoot = new WeakMap<HTMLElement, PanelUiState>();
@@ -66,6 +67,7 @@ export function renderStoryPanel(
           : "how",
       selectedKey: null,
       openCount: openNow,
+      dismissSelected: [],
     };
     uiByRoot.set(root, fresh);
     return fresh;
@@ -401,6 +403,62 @@ export function renderStoryPanel(
       return list;
     }
 
+    const validKeys = new Set(done.map((s) => s.key));
+    ui.dismissSelected = ui.dismissSelected.filter((k) => validKeys.has(k));
+    const selected = new Set(ui.dismissSelected);
+    const setSelection = (keys: string[]) => {
+      ui.dismissSelected = keys;
+      render();
+    };
+
+    const toolbar = el("div", { class: "done-toolbar" });
+    const links = el("div", { class: "jira-select-links" });
+    const selectAll = el("button", {
+      type: "button",
+      class: "jira-select-link",
+      text: "Select all",
+    });
+    selectAll.addEventListener("click", () => {
+      setSelection(done.map((s) => s.key));
+    });
+    const selectNone = el("button", {
+      type: "button",
+      class: "jira-select-link",
+      text: "None",
+    });
+    selectNone.addEventListener("click", () => setSelection([]));
+    links.append(selectAll, selectNone);
+    toolbar.append(links);
+
+    const dismissButton = el("button", {
+      type: "button",
+      class: "ghost dismiss-stories-btn",
+      text: "Dismiss",
+      disabled: selected.size === 0,
+    });
+    dismissButton.addEventListener("click", () => {
+      const keys = [...selected];
+      if (keys.length === 0) return;
+      dismissButton.disabled = true;
+      void roomsApi
+        .dismissStories(state.room.code, keys)
+        .then(async (result) => {
+          ui.dismissSelected = [];
+          showToast(
+            result.skipped > 0
+              ? `Dismissed ${result.dismissed} ${storyWord(result.dismissed)}; ${result.skipped} selected story${result.skipped === 1 ? "" : "s"} may still be estimating.`
+              : `Dismissed ${result.dismissed} ${storyWord(result.dismissed)}.`,
+          );
+          await onChanged();
+        })
+        .catch((err: unknown) => {
+          dismissButton.disabled = false;
+          showToast(formatError(err, "dismiss stories"), true);
+        });
+    });
+    toolbar.append(dismissButton);
+    list.append(toolbar);
+
     const table = el("table", { class: "story-table" });
     const head = el("thead");
     const headRow = el("tr");
@@ -409,6 +467,7 @@ export function renderStoryPanel(
       el("th", { text: "Story" }),
       el("th", { text: "Agreed estimate" }),
       el("th", { text: "Completed" }),
+      el("th", { class: "done-pick", text: "Select" }),
     );
     head.append(headRow);
     table.append(head);
@@ -432,6 +491,24 @@ export function renderStoryPanel(
           text: story.estimatedAt ? formatCompletedTime(story.estimatedAt) : "—",
         }),
       );
+      const pickCell = el("td", { class: "done-pick" });
+      const box = el("input", {
+        type: "checkbox",
+        class: "done-select",
+        "aria-label": `Dismiss ${story.key}`,
+      }) as HTMLInputElement;
+      box.checked = selected.has(story.key);
+      box.addEventListener("change", () => {
+        const next = new Set(selected);
+        if (box.checked) {
+          next.add(story.key);
+        } else {
+          next.delete(story.key);
+        }
+        setSelection([...next]);
+      });
+      pickCell.append(box);
+      row.append(pickCell);
       body.append(row);
     }
     table.append(body);
@@ -462,13 +539,17 @@ export function renderStoryPanel(
       text: "Choose a Jira CSV or RSS export from your estimation filter.",
     });
 
-    const drop = el("label", { class: "import-drop", text: "Choose file…" });
+    const drop = el("label", { class: "import-drop" });
     const file = el("input", {
       type: "file",
       accept: ".csv,.xml,.rss,.txt,text/csv,text/xml,application/xml",
     }) as HTMLInputElement;
     file.hidden = true;
-    drop.append(file);
+    drop.append(
+      el("span", { class: "import-drop-main", text: "Choose file…" }),
+      el("span", { class: "import-drop-sub", text: "Jira CSV or RSS export" }),
+      file,
+    );
 
     const note = el("p", {
       class: "jira-hint",
