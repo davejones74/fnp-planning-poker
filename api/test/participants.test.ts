@@ -374,6 +374,108 @@ describe("RoomService - presence roster", () => {
     assert.ok(!after.participants.some((p) => p.id === sian.id));
   });
 
+  it("stamps offlineAt on a real disconnect so the clock freezes there", async () => {
+    const clock = new FakeClock();
+    const h = makeHarness(clock, {
+      participantOfflineGraceMinutes: 60,
+      roomExpiryHours: 24 * 7,
+    });
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    await h.service.handleConnect(room.code, alice.id, "alice-tab");
+    h.pubsub.clear();
+    clock.advance(10 * 60 * 1000);
+
+    await h.service.handleDisconnect(room.code, alice.id, "alice-tab");
+
+    const after = await h.service.getRoom(room.code);
+    const offline = after.participants.find((p) => p.id === alice.id);
+    assert.equal(offline?.connected, false);
+    assert.equal(offline?.offlineAt, "2026-01-01T00:10:00.000Z");
+    const evt = h.pubsub
+      .forRoom(room.code)
+      .find(
+        (e) =>
+          e.event.type === "participant.updated" &&
+          e.event.participant.id === alice.id,
+      );
+    assert.ok(evt?.event.type === "participant.updated");
+    if (evt?.event.type === "participant.updated") {
+      assert.equal(evt.event.participant.offlineAt, "2026-01-01T00:10:00.000Z");
+    }
+  });
+
+  it("stamps offlineAt when the stale pass flags a ghost", async () => {
+    const clock = new FakeClock();
+    const h = makeHarness(clock, {
+      participantOfflineGraceMinutes: 60,
+      roomExpiryHours: 24 * 7,
+    });
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    await h.service.handleConnect(room.code, alice.id, "alice-tab");
+    h.pubsub.clear();
+    clock.advance(61 * 60 * 1000);
+
+    const after = await h.service.getRoom(room.code);
+    const offline = after.participants.find((p) => p.id === alice.id);
+    assert.equal(offline?.connected, false);
+    assert.equal(offline?.offlineAt, "2026-01-01T01:01:00.000Z");
+    const evt = h.pubsub
+      .forRoom(room.code)
+      .find(
+        (e) =>
+          e.event.type === "participant.updated" &&
+          e.event.participant.id === alice.id,
+      );
+    assert.ok(evt?.event.type === "participant.updated");
+    if (evt?.event.type === "participant.updated") {
+      assert.equal(evt.event.participant.offlineAt, "2026-01-01T01:01:00.000Z");
+    }
+  });
+
+  it("clears offlineAt when a heartbeat revives a participant", async () => {
+    const h = makeHarness();
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    await h.service.handleDisconnect(room.code, alice.id, "alice-tab");
+
+    await h.service.touchParticipant(room.code, alice.id);
+
+    const after = await h.service.getRoom(room.code);
+    const revived = after.participants.find((p) => p.id === alice.id);
+    assert.equal(revived?.connected, true);
+    assert.equal(revived?.offlineAt, undefined);
+  });
+
+  it("clears offlineAt when a new connection revives the participant", async () => {
+    const h = makeHarness();
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    await h.service.handleDisconnect(room.code, alice.id, "alice-tab");
+
+    await h.service.handleConnect(room.code, alice.id, "new-tab");
+
+    const after = await h.service.getRoom(room.code);
+    const revived = after.participants.find((p) => p.id === alice.id);
+    assert.equal(revived?.connected, true);
+    assert.equal(revived?.offlineAt, undefined);
+  });
+
+  it("clears offlineAt when the session resumes", async () => {
+    const h = makeHarness();
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    await h.service.handleDisconnect(room.code, alice.id, "alice-tab");
+
+    await h.service.joinRoom(room.code, "Alice", alice.id);
+
+    const after = await h.service.getRoom(room.code);
+    const revived = after.participants.find((p) => p.id === alice.id);
+    assert.equal(revived?.connected, true);
+    assert.equal(revived?.offlineAt, undefined);
+  });
+
   it("flags a legacy participant with no lastSeenAt offline based on joinedAt", async () => {
     const clock = new FakeClock();
     const h = makeHarness(clock, {

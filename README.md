@@ -28,7 +28,9 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
   dropped off. Live tabs ping a presence heartbeat every minute; a participant who
   stops pinging (including one whose Web PubSub disconnect was never delivered) is
   flagged offline after `PARTICIPANT_OFFLINE_GRACE_MINUTES` (default 60) — the roster
-  itself is kept until an explicit leave or kick, so nobody silently disappears
+  itself is kept until an explicit leave or kick, so nobody silently disappears.
+  Each player's elapsed clock **pauses** while they are offline and resumes on their
+  return; the room running time keeps counting regardless
 - **Unique names:** a display name can appear on the roster at most once (matched
   case-insensitively and trimmed). A fresh join reusing an existing name replaces
   the previous holder of that name (their sockets are closed); the facilitator is

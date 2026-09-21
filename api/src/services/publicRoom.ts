@@ -17,6 +17,7 @@ export function toPublicRoom(room: Room, viewerId?: string): PublicRoom {
       connected: p.connected,
       hasSelected: p.selectedCard !== undefined,
       selectedCard: revealed ? (p.selectedCard ?? null) : null,
+      ...(p.offlineAt ? { offlineAt: p.offlineAt } : {}),
     }));
 
   let self: PublicRoom["self"];

@@ -4,6 +4,7 @@ import { formatElapsed } from "../util/time.ts";
 import { MAX_ROOM_PARTICIPANTS } from "../../../shared/validation.ts";
 import { outliersForRound } from "../util/estimates.ts";
 import { checkIcon, clockIcon, coffeeIcon, personIcon, chevronIcon, copyIcon } from "./icons.ts";
+import type { PublicParticipant } from "../../../shared/types.ts";
 
 export interface PlayerPanelActions {
   onReveal: () => Promise<void> | void;
@@ -12,13 +13,38 @@ export interface PlayerPanelActions {
   onLeave: () => void;
 }
 
+/**
+ * Participants whose drop happened before the server began stamping offlineAt
+ * have no anchor, so their clock is frozen at the first moment this browser saw
+ * them offline. The cache keeps that anchor stable across panel re-renders.
+ */
+const offlineAnchorCache = new Map<string, string>();
+
+function offlineAnchor(p: PublicParticipant, nowIso: string): string | undefined {
+  if (p.offlineAt) {
+    offlineAnchorCache.set(p.id, p.offlineAt);
+    return p.offlineAt;
+  }
+  if (!p.connected) {
+    const cached = offlineAnchorCache.get(p.id);
+    if (cached) return cached;
+    offlineAnchorCache.set(p.id, nowIso);
+    return nowIso;
+  }
+  offlineAnchorCache.delete(p.id);
+  return undefined;
+}
+
 /** Refresh every elapsed-time label in an already-rendered panel. */
 export function updateTimers(panelRoot: HTMLElement, roomCreatedAt: string): void {
   panelRoot.querySelectorAll<HTMLElement>("[data-room-since]").forEach((node) => {
     node.textContent = formatElapsed(roomCreatedAt);
   });
   panelRoot.querySelectorAll<HTMLElement>("[data-player-since]").forEach((node) => {
-    node.textContent = formatElapsed(node.dataset.playerSince ?? roomCreatedAt);
+    const end = node.dataset.playerOfflineAt
+      ? new Date(node.dataset.playerOfflineAt).getTime()
+      : undefined;
+    node.textContent = formatElapsed(node.dataset.playerSince ?? roomCreatedAt, end);
   });
 }
 
@@ -84,13 +110,17 @@ export function renderPlayersPanel(
       else if (p.id === outliers.highestId) name.append(outlierBadge("pessimistic"));
     }
     main.append(name);
-    main.append(
-      el("span", {
-        class: "player-since",
-        "data-player-since": p.joinedAt,
-        text: formatElapsed(p.joinedAt),
-      }),
+    const playerSince = el("span", {
+      class: "player-since",
+      "data-player-since": p.joinedAt,
+    });
+    const anchor = offlineAnchor(p, new Date().toISOString());
+    if (anchor) playerSince.setAttribute("data-player-offline-at", anchor);
+    playerSince.textContent = formatElapsed(
+      p.joinedAt,
+      anchor ? new Date(anchor).getTime() : undefined,
     );
+    main.append(playerSince);
     row.append(main);
 
     if (isFacilitator && p.id !== state.myParticipantId) {

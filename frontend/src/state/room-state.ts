@@ -70,6 +70,13 @@ export class RoomState {
         const participant = find(event.participant.id);
         if (participant) {
           participant.connected = event.participant.connected;
+          if (participant.connected) {
+            delete participant.offlineAt;
+          } else if (event.participant.offlineAt !== undefined) {
+            participant.offlineAt = event.participant.offlineAt;
+          } else {
+            delete participant.offlineAt;
+          }
           // A leave/promotion event carries the new facilitator flag; without
           // this, everyone who re-renders would keep treating the old
           // facilitator as host and actions would 403.

@@ -47,6 +47,12 @@ function normalizeName(name: string): string {
   return name.trim().toLocaleLowerCase();
 }
 
+interface StaleEntry {
+  id: string;
+  displayName: string;
+  offlineAt: string;
+}
+
 export class RoomService {
   private readonly deck: readonly CardValue[];
   private readonly roomExpiryMs: number;
@@ -126,6 +132,7 @@ export class RoomService {
         existing.lastSeenAt = nowIso;
         if (!existing.connected) {
           existing.connected = true;
+          delete existing.offlineAt;
           await this.persist(room);
           await this.pubsub.publishToRoom(room.code, {
             type: "participant.updated",
@@ -238,7 +245,10 @@ export class RoomService {
     const participant = this.requireParticipant(room, participantId);
     const wasOffline = !participant.connected;
     participant.lastSeenAt = this.iso(this.now());
-    if (wasOffline) participant.connected = true;
+    if (wasOffline) {
+      participant.connected = true;
+      delete participant.offlineAt;
+    }
     await this.persist(room);
     if (wasOffline) {
       await this.pubsub.publishToRoom(room.code, {
@@ -627,6 +637,7 @@ export class RoomService {
         displayName: next.displayName,
         connected: next.connected,
         isFacilitator: true,
+        ...(next.offlineAt ? { offlineAt: next.offlineAt } : {}),
       },
     });
   }
@@ -649,6 +660,7 @@ export class RoomService {
     participant.lastSeenAt = this.iso(this.now());
     if (firstConnection || !participant.connected) {
       participant.connected = true;
+      delete participant.offlineAt;
       await this.persist(room);
       await this.pubsub.publishToRoom(room.code, {
         type: "participant.updated",
@@ -681,8 +693,10 @@ export class RoomService {
       }
       if (remaining > 0) return; // still has live connections
       if (!participant.connected) return;
+      const nowIso = this.iso(this.now());
       participant.connected = false;
-      participant.lastSeenAt = this.iso(this.now());
+      participant.offlineAt = nowIso;
+      participant.lastSeenAt = nowIso;
       await this.persist(room);
       await this.pubsub.publishToRoom(room.code, {
         type: "participant.updated",
@@ -691,6 +705,7 @@ export class RoomService {
           id: participant.id,
           displayName: participant.displayName,
           connected: false,
+          offlineAt: nowIso,
         },
       });
     } catch {
@@ -731,17 +746,23 @@ export class RoomService {
    * so a participant still flagged online with no live heartbeat must be
    * treated as having dropped off; a future heartbeat or resume revives them.
    */
-  private markStaleOffline(room: Room): { id: string; displayName: string }[] {
+  private markStaleOffline(room: Room): StaleEntry[] {
     const now = this.now().getTime();
-    const flagged: { id: string; displayName: string }[] = [];
+    const flagged: StaleEntry[] = [];
     for (const [id, participant] of room.participants) {
       if (!participant.connected) continue;
       const lastSeen = participant.lastSeenAt
         ? new Date(participant.lastSeenAt).getTime()
         : new Date(participant.joinedAt).getTime();
       if (now - lastSeen >= this.participantOfflineGraceMs) {
+        const nowIso = this.iso(new Date(now));
         participant.connected = false;
-        flagged.push({ id, displayName: participant.displayName });
+        participant.offlineAt = nowIso;
+        flagged.push({
+          id,
+          displayName: participant.displayName,
+          offlineAt: nowIso,
+        });
       }
     }
     for (const participant of flagged) {
@@ -752,6 +773,7 @@ export class RoomService {
           id: participant.id,
           displayName: participant.displayName,
           connected: false,
+          offlineAt: participant.offlineAt,
         },
       });
     }

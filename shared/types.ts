@@ -34,6 +34,13 @@ export interface Participant {
    * broadcast.
    */
   lastSeenAt?: string;
+  /**
+   * Moment this participant dropped off (their last connection closed, or the
+   * offline-grace period flagged their "connected" tab as dead). The per-player
+   * elapsed clock freezes at this point while the participant is offline and
+   * resumes on return; absent while online.
+   */
+  offlineAt?: string;
 }
 
 export interface Story {
@@ -92,6 +99,8 @@ export interface PublicParticipant {
   connected: boolean;
   hasSelected: boolean;
   selectedCard: CardValue | null;
+  /** Present when `connected` is false: when the participant dropped off. */
+  offlineAt?: string;
 }
 
 export interface PublicRoom {
@@ -145,6 +154,12 @@ export interface ParticipantUpdatedEvent {
     connected: boolean;
     /** Present when a leave/promotion changed who the facilitator is. */
     isFacilitator?: boolean;
+    /**
+     * When the participant went offline (set on connected:false broadcasts);
+     * the per-player elapsed clock freezes at this timestamp. Absent on
+     * connected:true broadcasts.
+     */
+    offlineAt?: string;
   };
 }
 
