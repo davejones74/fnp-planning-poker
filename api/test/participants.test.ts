@@ -166,17 +166,75 @@ describe("RoomService - stale offline cleanup", () => {
     assert.ok(bob.id);
   });
 
-  it("never sweeps an active (online) participant", async () => {
+  it("sweeps an online participant whose presence went stale (ghost)", async () => {
     const clock = new FakeClock();
     const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
     const { room, participant } = await h.service.createRoom("Dave");
     const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
     await h.service.handleConnect(room.code, alice.id, "alice-tab");
 
-    clock.advance(10 * 60 * 60 * 1000); // 10 hours later, still connected
+    // The Web PubSub disconnect for alice's tab was lost, so she still looks
+    // "connected" — but nothing has refreshed her presence for 10 hours. Her
+    // tab is gone; the sweep must remove her anyway.
+    clock.advance(10 * 60 * 60 * 1000);
+    const after = await h.service.getRoom(room.code);
+    assert.ok(!after.participants.some((p) => p.id === alice.id));
+    assert.ok(after.participants.some((p) => p.id === participant.id));
+  });
+
+  it("a presence heartbeat keeps a participant from being swept", async () => {
+    const clock = new FakeClock();
+    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
+    const { room, participant } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    await h.service.handleConnect(room.code, alice.id, "alice-tab");
+
+    // A live tab pings every minute; even 35-minute gaps keep lastSeenAt
+    // comfortably inside the 60-minute grace window.
+    for (let i = 0; i < 3; i++) {
+      clock.advance(35 * 60 * 1000);
+      await h.service.touchParticipant(room.code, alice.id);
+    }
     const after = await h.service.getRoom(room.code);
     assert.ok(after.participants.some((p) => p.id === alice.id));
     assert.ok(after.participants.some((p) => p.id === participant.id));
+  });
+
+  it("stops keeping a participant the moment the heartbeat stops", async () => {
+    const clock = new FakeClock();
+    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    await h.service.handleConnect(room.code, alice.id, "alice-tab");
+    await h.service.touchParticipant(room.code, alice.id);
+
+    clock.advance(61 * 60 * 1000); // tab closed; no heartbeat for over an hour
+    const after = await h.service.getRoom(room.code);
+    assert.ok(!after.participants.some((p) => p.id === alice.id));
+  });
+
+  it("a presence heartbeat revives a participant whose disconnect was missed", async () => {
+    const clock = new FakeClock();
+    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    await h.service.handleConnect(room.code, alice.id, "alice-tab");
+    h.pubsub.clear();
+
+    h.service.handleDisconnect(room.code, alice.id, "alice-tab");
+    await h.service.touchParticipant(room.code, alice.id);
+
+    const after = await h.service.getRoom(room.code);
+    assert.equal(after.participants.find((p) => p.id === alice.id)?.connected, true);
+    const revived = h.pubsub
+      .forRoom(room.code)
+      .find(
+        (entry) =>
+          entry.event.type === "participant.updated" &&
+          entry.event.participant.id === alice.id &&
+          entry.event.participant.connected === true,
+      );
+    assert.ok(revived?.event.type === "participant.updated");
   });
 
   it("never sweeps the facilitator even when offline", async () => {

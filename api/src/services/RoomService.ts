@@ -185,6 +185,32 @@ export class RoomService {
     return this.requireParticipant(room, participantId);
   }
 
+  /**
+   * Presence heartbeat from a live browser tab. Refreshes lastSeenAt so the
+   * stale-sweep never mistakes this participant for a ghost, and revives a
+   * participant whose Web PubSub disconnect event was lost (the only thing
+   * that reliably proves a participant is still here is a tab still pinging).
+   */
+  async touchParticipant(code: string, participantId: string): Promise<void> {
+    const room = await this.loadRoom(code);
+    const participant = this.requireParticipant(room, participantId);
+    const wasOffline = !participant.connected;
+    participant.lastSeenAt = this.iso(this.now());
+    if (wasOffline) participant.connected = true;
+    await this.persist(room);
+    if (wasOffline) {
+      await this.pubsub.publishToRoom(room.code, {
+        type: "participant.updated",
+        roomCode: room.code,
+        participant: {
+          id: participant.id,
+          displayName: participant.displayName,
+          connected: true,
+        },
+      });
+    }
+  }
+
   async selectCard(code: string, participantId: string, rawCard: unknown): Promise<void> {
     const room = await this.loadRoom(code);
     const participant = this.requireParticipant(room, participantId);
@@ -656,13 +682,18 @@ export class RoomService {
     return room;
   }
 
-  /** Removes offline participants older than the grace period (facilitator exempt). */
+  /**
+   * Removes participants whose presence has not been refreshed within the
+   * grace period (facilitator exempt). Live tabs refresh lastSeenAt via a
+   * heartbeat; the connected flag alone is not proof a browser is still here —
+   * Web PubSub disconnect events can be lost, leaving a dead tab marked online
+   * forever — so it does not protect a participant from this sweep.
+   */
   private cleanupStaleParticipants(room: Room): { id: string; displayName: string }[] {
     const now = this.now().getTime();
     const removed: { id: string; displayName: string }[] = [];
     for (const [id, participant] of room.participants) {
       if (participant.isFacilitator) continue;
-      if (participant.connected) continue;
       const lastSeen = participant.lastSeenAt
         ? new Date(participant.lastSeenAt).getTime()
         : new Date(participant.joinedAt).getTime();

@@ -29,6 +29,7 @@ import { startStoryEstimation } from "./functions/startStoryEstimation.ts";
 import { recordAgreedEstimate } from "./functions/recordAgreedEstimate.ts";
 import { removeParticipant } from "./functions/removeParticipant.ts";
 import { leaveRoom } from "./functions/leaveRoom.ts";
+import { presence } from "./functions/presence.ts";
 import { getParticipants } from "./functions/getParticipants.ts";
 import { negotiate } from "./functions/negotiate.ts";
 import { me } from "./functions/me.ts";
@@ -76,6 +77,7 @@ const routes: Route[] = [
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/stories\/[^/]+\/estimate$/, handler: wrap(recordAgreedEstimate) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/participants\/remove$/, handler: wrap(removeParticipant) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/participants\/leave$/, handler: wrap(leaveRoom) },
+  { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/participants\/presence$/, handler: wrap(presence) },
   { method: "GET", pattern: /^\/api\/negotiate$/, handler: wrap(negotiate) },
   { method: "POST", pattern: /^\/api\/negotiate$/, handler: wrap(negotiate) },
   { method: "GET", pattern: /^\/api\/jira\/authorize$/, handler: wrap(jiraAuthorize) },

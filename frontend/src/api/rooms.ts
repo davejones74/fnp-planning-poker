@@ -197,6 +197,22 @@ export const roomsApi = {
     });
   },
 
+  /**
+   * Presence heartbeat: proves this browser tab is still really in the room.
+   * Web PubSub disconnect events can be lost (a closed tab can linger marked
+   * online), so the server's stale-sweep keys off this live ping instead.
+   */
+  presence(code: string): Promise<{ ok: boolean }> {
+    const participantId = sessionParticipantId(code);
+    return request<{ ok: boolean }>(
+      `/api/rooms/${code}/participants/presence`,
+      {
+        method: "POST",
+        body: JSON.stringify({ participantId }),
+      },
+    );
+  },
+
   negotiate(code: string, participantId: string): Promise<NegotiateResult> {
     const query = new URLSearchParams({ roomCode: code, participantId });
     return request<NegotiateResult>(`/api/negotiate?${query.toString()}`);

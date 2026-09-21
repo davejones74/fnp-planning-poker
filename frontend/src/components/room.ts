@@ -12,6 +12,7 @@ import type { PublicRoom } from "../../../shared/types.ts";
 
 let activeClient: RealtimeClient | null = null;
 let activeTimer: ReturnType<typeof setInterval> | null = null;
+let presenceTimer: ReturnType<typeof setInterval> | null = null;
 let playersRootRef: HTMLElement | null = null;
 
 export async function renderRoomPage(
@@ -80,6 +81,10 @@ function teardownRoom(): void {
   if (activeTimer) {
     clearInterval(activeTimer);
     activeTimer = null;
+  }
+  if (presenceTimer) {
+    clearInterval(presenceTimer);
+    presenceTimer = null;
   }
   playersRootRef = null;
 }
@@ -268,6 +273,13 @@ async function enterRoom(
   activeTimer = setInterval(() => {
     if (playersRootRef) updateTimers(playersRootRef, state.room.createdAt);
   }, 1000);
+
+  // Presence heartbeat keeps this tab alive to the server's stale-sweep, even
+  // if a Web PubSub disconnect event for it was lost. Silence failures: the
+  // realtime socket and next join still reconcile on their own.
+  presenceTimer = setInterval(() => {
+    void roomsApi.presence(code).catch(() => {});
+  }, 60_000);
 
   // Realtime
   async function connectWs(): Promise<void> {
