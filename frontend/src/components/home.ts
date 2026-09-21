@@ -81,7 +81,11 @@ export async function renderHome(root: HTMLElement): Promise<void> {
     }
     joinButton.disabled = true;
     try {
-      const result = await roomsApi.join(code, name);
+      // Resume the participant this browser last used for this room; the
+      // server returns the existing participant instead of creating a
+      // duplicate, and reconnects don't double-count against capacity.
+      const participantId = appState.getParticipantId(code) ?? undefined;
+      const result = await roomsApi.join(code, name, participantId);
       appState.setSession(result.roomCode, result.participantId, result.displayName);
       navigate(`/room/${result.roomCode}`);
     } catch (err) {

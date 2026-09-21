@@ -35,7 +35,11 @@ export async function renderRoomPage(
 
   const resume = appState.getSession(code);
 
-  // Try to resume an existing session.
+  // Try to resume an existing session. The stored identity is precious: if a
+  // transient error (offline, server hiccup) cleared it, the next join would
+  // create a brand-new participant while the "old" one is still in the room —
+  // the duplicate participant bug. It is only cleared when the server is
+  // definitive that the participant (or room) no longer exists.
   if (resume) {
     try {
       const room = await roomsApi.get(code, resume.participantId);
@@ -44,13 +48,25 @@ export async function renderRoomPage(
         await enterRoom(root, code, resume, room);
         return;
       }
+      // Room is alive but this participant id is gone (kicked, left, or swept
+      // as stale). The stored id is dead — clear it and join fresh below.
+      appState.clearSession(code);
     } catch (err) {
-      // Server may have restarted or room expired; fall back to join form.
-      if (err instanceof ApiClientError && err.status === 404) {
+      if (
+        err instanceof ApiClientError &&
+        (err.status === 404 || err.status === 403)
+      ) {
+        // Room no longer exists (or this id was refused); nothing to resume.
         appState.removeRecentRoom(code);
+        appState.clearSession(code);
+      } else {
+        // Transient failure: keep the session and retry instead of falling
+        // through to a fresh join that would duplicate this participant.
+        showToast("Could not load the room; retrying…");
+        setTimeout(() => void renderRoomPage(root, code), 1_500);
+        return;
       }
     }
-    appState.clearSession(code);
   }
 
   renderJoin(root, code);
@@ -162,12 +178,19 @@ async function enterRoom(
   playersRootRef = playersRoot;
 
   // ---- Actions ----
-  function leave(): void {
-    // Keep the stored identity so "Rejoin" resumes this participant instead
-    // of creating a duplicate; it is cleared only when the server says the
-    // participant no longer exists.
-    teardownRoom();
-    navigate("/");
+  async function leave(): Promise<void> {
+    try {
+      await roomsApi.leave(code);
+    } catch {
+      // The server call failed (offline); the participant id is cleared here
+      // anyway so this browser stops reusing it. Any orphaned record is
+      // removed by the server's stale-participant sweep.
+    } finally {
+      appState.clearSession(code);
+      appState.removeRecentRoom(code);
+      teardownRoom();
+      navigate("/");
+    }
   }
 
   function refresh(): Promise<void> {
@@ -264,7 +287,7 @@ async function enterRoom(
             evt.type === "participant.left" &&
             evt.participant.id === session.participantId
           ) {
-            handleRemoved("You were removed from the room.");
+            handleRemoved("You were removed from the room.", code);
             return;
           }
           state.applyEvent(evt);
@@ -274,7 +297,7 @@ async function enterRoom(
           // Presence is reflected through participant.updated events.
         },
         onUnauthorized() {
-          handleRemoved("You are no longer in this room.");
+          handleRemoved("You are no longer in this room.", code);
         },
       });
       client.join(code, session.participantId);
@@ -284,7 +307,7 @@ async function enterRoom(
         err instanceof ApiClientError &&
         (err.status === 403 || err.status === 404)
       ) {
-        handleRemoved("You are no longer in this room.");
+        handleRemoved("You are no longer in this room.", code);
         return;
       }
       setTimeout(connectWs, 5_000);
@@ -294,7 +317,9 @@ async function enterRoom(
   void connectWs();
 }
 
-function handleRemoved(message: string): void {
+function handleRemoved(message: string, code: string): void {
+  appState.clearSession(code);
+  appState.removeRecentRoom(code);
   showToast(message, true);
   teardownRoom();
   navigate("/");

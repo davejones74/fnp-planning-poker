@@ -5,6 +5,17 @@ const THEME_KEY = "scrumPoker.theme";
 
 export type Theme = "light" | "dark";
 
+/**
+ * Version of the per-room session payload stored in localStorage.
+ *
+ *   v1 (legacy): the bare participant id string ("scrumPoker.room.ABC123" = "p_…").
+ *   v2: JSON {"v":2,"id":"p_…"} under the same key.
+ *
+ * The serializer keeps the storage key stable so existing v1 sessions keep
+ * working; the reader adopts any legacy bare string as v2 automatically.
+ */
+const ROOM_SESSION_VERSION = 2;
+
 function safeGet(storage: Storage, key: string): string | null {
   try {
     return storage.getItem(key);
@@ -34,6 +45,31 @@ export interface SessionIdentity {
   displayName: string;
 }
 
+/** Reads a room session payload, adopting legacy v1 (bare string) as v2. */
+function parseRoomSession(raw: string | null): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as { v?: unknown; id?: unknown };
+      if (parsed.v === ROOM_SESSION_VERSION && typeof parsed.id === "string") {
+        return parsed.id;
+      }
+      // Unknown future schema: treat as no session rather than corrupting a
+      // newer client's data.
+      return null;
+    } catch {
+      return null;
+    }
+  }
+  return trimmed;
+}
+
+function serializeRoomSession(participantId: string): string {
+  return JSON.stringify({ v: ROOM_SESSION_VERSION, id: participantId });
+}
+
 export const appState = {
   get displayName(): string {
     return safeGet(localStorage, DISPLAY_NAME_KEY) ?? "";
@@ -54,7 +90,15 @@ export const appState = {
 
   /** Participant id previously used by this browser for a room, if any. */
   getParticipantId(roomCode: string): string | null {
-    return safeGet(localStorage, ROOM_PREFIX + roomCode);
+    const id = parseRoomSession(safeGet(localStorage, ROOM_PREFIX + roomCode));
+    if (!id) return null;
+    // Adopt legacy v1 (bare string) sessions as the versioned payload so a
+    // future schema bump starts from a known shape.
+    const raw = safeGet(localStorage, ROOM_PREFIX + roomCode);
+    if (raw !== null && !raw.trim().startsWith("{")) {
+      safeSet(localStorage, ROOM_PREFIX + roomCode, serializeRoomSession(id));
+    }
+    return id;
   },
 
   /**
@@ -69,7 +113,7 @@ export const appState = {
   },
 
   setSession(roomCode: string, participantId: string, displayName: string): void {
-    safeSet(localStorage, ROOM_PREFIX + roomCode, participantId);
+    safeSet(localStorage, ROOM_PREFIX + roomCode, serializeRoomSession(participantId));
     this.displayName = displayName;
     this.addRecentRoom(roomCode);
   },

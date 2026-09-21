@@ -1,4 +1,5 @@
 import type { PublicRoom, SessionStory } from "../../../shared/types.ts";
+import { appState } from "../state/app-state.ts";
 
 export class ApiClientError extends Error {
   readonly code: string;
@@ -187,6 +188,15 @@ export const roomsApi = {
     });
   },
 
+  /** Leaves the room: the participant's id stops being reusable for it. */
+  leave(code: string): Promise<{ ok: boolean }> {
+    const participantId = sessionParticipantId(code);
+    return request<{ ok: boolean }>(`/api/rooms/${code}/participants/leave`, {
+      method: "POST",
+      body: JSON.stringify({ participantId }),
+    });
+  },
+
   negotiate(code: string, participantId: string): Promise<NegotiateResult> {
     const query = new URLSearchParams({ roomCode: code, participantId });
     return request<NegotiateResult>(`/api/negotiate?${query.toString()}`);
@@ -196,11 +206,13 @@ export const roomsApi = {
 /**
  * participantId is carried by the caller in the app; the API layer reads the
  * session identity for the given room so callers do not repeat themselves.
+ * Reads through appState so both legacy (v1 bare string) and versioned (v2
+ * JSON) localStorage payloads resolve to the same participant id.
  */
 function sessionParticipantId(code: string): string {
-  const raw = localStorage.getItem(`scrumPoker.room.${code}`);
-  if (!raw) {
+  const participantId = appState.getParticipantId(code);
+  if (!participantId) {
     throw new ApiClientError("NOT_IN_ROOM", 401, "You are not in this room.");
   }
-  return raw;
+  return participantId;
 }

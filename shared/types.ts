@@ -27,6 +27,12 @@ export interface Participant {
   isFacilitator: boolean;
   connected: boolean;
   selectedCard?: CardValue;
+  /**
+   * Last time this participant was active (joined/connected). Offline records
+   * older than the stale-participant grace period are cleaned up by
+   * RoomService.loadRoom. Kept server-side; never broadcast.
+   */
+  lastSeenAt?: string;
 }
 
 export interface Story {
@@ -132,7 +138,13 @@ export interface ParticipantLeftEvent {
 export interface ParticipantUpdatedEvent {
   type: "participant.updated";
   roomCode: string;
-  participant: { id: string; displayName: string; connected: boolean };
+  participant: {
+    id: string;
+    displayName: string;
+    connected: boolean;
+    /** Present when a leave/promotion changed who the facilitator is. */
+    isFacilitator?: boolean;
+  };
 }
 
 export interface CardSelectedEvent {

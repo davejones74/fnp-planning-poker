@@ -68,7 +68,16 @@ export class RoomState {
         break;
       case "participant.updated": {
         const participant = find(event.participant.id);
-        if (participant) participant.connected = event.participant.connected;
+        if (participant) {
+          participant.connected = event.participant.connected;
+          // A leave/promotion event carries the new facilitator flag; without
+          // this, everyone who re-renders would keep treating the old
+          // facilitator as host and actions would 403.
+          if (event.participant.isFacilitator !== undefined) {
+            for (const p of this.room.participants) p.isFacilitator = false;
+            participant.isFacilitator = event.participant.isFacilitator;
+          }
+        }
         break;
       }
       case "card.selected": {
