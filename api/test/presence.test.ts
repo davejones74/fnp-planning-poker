@@ -51,7 +51,7 @@ describe("RoomService - presence", () => {
   it("marks a participant online again when they resume", async () => {
     const h = makeHarness();
     const { room, participant } = await h.service.createRoom("Dave");
-    await h.service.handleDisconnect(room.code, participant.id);
+    await h.service.handleDisconnect(room.code, participant.id, "c1");
     h.pubsub.clear();
 
     const resumed = await h.service.joinRoom(room.code, "Dave", participant.id);
@@ -75,6 +75,54 @@ describe("RoomService - presence", () => {
     h.pubsub.clear();
     await h.service.joinRoom(room.code, "Dave", participant.id);
     assert.equal(h.pubsub.events.length, 0);
+  });
+
+  it("keeps a participant online while any connection is open", async () => {
+    const h = makeHarness();
+    const { room, participant } = await h.service.createRoom("Tabby");
+    await h.service.handleConnect(room.code, participant.id, "tab-a");
+    await h.service.handleConnect(room.code, participant.id, "tab-b");
+    h.pubsub.clear();
+
+    // One tab closes first; the participant stays online for everyone.
+    await h.service.handleDisconnect(room.code, participant.id, "tab-a");
+    assert.equal(
+      (await h.service.getRoom(room.code)).participants.find((p) => p.id === participant.id)?.connected,
+      true,
+    );
+    assert.equal(h.pubsub.events.length, 0);
+
+    // Last connection closing flips them offline exactly once.
+    await h.service.handleDisconnect(room.code, participant.id, "tab-b");
+    const after = await h.service.getRoom(room.code);
+    assert.equal(
+      after.participants.find((p) => p.id === participant.id)?.connected,
+      false,
+    );
+    const offline = h.pubsub
+      .forRoom(room.code)
+      .filter(
+        (entry) =>
+          entry.event.type === "participant.updated" &&
+          entry.event.participant.id === participant.id &&
+          entry.event.participant.connected === false,
+      );
+    assert.equal(offline.length, 1);
+  });
+
+  it("ignores a stale disconnect from an already-closed connection", async () => {
+    const h = makeHarness();
+    const { room, participant } = await h.service.createRoom("Tiddler");
+    await h.service.handleConnect(room.code, participant.id, "old");
+    await h.service.handleConnect(room.code, participant.id, "fresh");
+    await h.service.handleDisconnect(room.code, participant.id, "old");
+    // The stale "old" connection fires a disconnect again after it was already
+    // removed; with connections [fresh] still open the participant stays online.
+    await h.service.handleDisconnect(room.code, participant.id, "old");
+    assert.equal(
+      (await h.service.getRoom(room.code)).participants.find((p) => p.id === participant.id)?.connected,
+      true,
+    );
   });
 
   it("closes the removed participant's connections", async () => {

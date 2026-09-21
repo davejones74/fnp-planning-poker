@@ -6,6 +6,7 @@ import {
   statSync,
 } from "node:fs";
 import { extname, join, normalize } from "node:path";
+import { randomBytes } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { WebSocket } from "ws";
 import { dirname } from "node:path";
@@ -27,6 +28,7 @@ import { dismissStories } from "./functions/dismissStories.ts";
 import { startStoryEstimation } from "./functions/startStoryEstimation.ts";
 import { recordAgreedEstimate } from "./functions/recordAgreedEstimate.ts";
 import { removeParticipant } from "./functions/removeParticipant.ts";
+import { leaveRoom } from "./functions/leaveRoom.ts";
 import { getParticipants } from "./functions/getParticipants.ts";
 import { negotiate } from "./functions/negotiate.ts";
 import { me } from "./functions/me.ts";
@@ -73,6 +75,7 @@ const routes: Route[] = [
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/stories\/[^/]+\/start$/, handler: wrap(startStoryEstimation) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/stories\/[^/]+\/estimate$/, handler: wrap(recordAgreedEstimate) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/participants\/remove$/, handler: wrap(removeParticipant) },
+  { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/participants\/leave$/, handler: wrap(leaveRoom) },
   { method: "GET", pattern: /^\/api\/negotiate$/, handler: wrap(negotiate) },
   { method: "POST", pattern: /^\/api\/negotiate$/, handler: wrap(negotiate) },
   { method: "GET", pattern: /^\/api\/jira\/authorize$/, handler: wrap(jiraAuthorize) },
@@ -176,6 +179,16 @@ function serveStatic(pathname: string, res: ServerResponse): boolean {
 
 const wss = new WebSocketServer({ noServer: true });
 
+/**
+ * The in-memory pub/sub has no broker-assigned connection id (Web PubSub sends
+ * `ce-connectionid`), so the local server fabricates one per socket. It is
+ * passed to RoomService AND stored in the pub/sub binding so the disconnect
+ * that follows this socket's close can be attributed to the same connection.
+ */
+function randomConnectionId(): string {
+  return `c_${randomBytes(8).toString("hex")}`;
+}
+
 wss.on("connection", (socket: WebSocket) => {
   socket.on("message", async (data) => {
     try {
@@ -186,9 +199,10 @@ wss.on("connection", (socket: WebSocket) => {
         typeof msg.participantId === "string"
       ) {
         await rooms.getParticipant(msg.roomCode, msg.participantId); // throws if invalid
-        await rooms.handleConnect(msg.roomCode, msg.participantId);
+        const connectionId = randomConnectionId();
+        await rooms.handleConnect(msg.roomCode.toUpperCase(), msg.participantId, connectionId);
         if (realtime instanceof InMemoryPubSubService) {
-          realtime.bind(socket, msg.roomCode.toUpperCase(), msg.participantId);
+          realtime.bind(socket, msg.roomCode.toUpperCase(), msg.participantId, connectionId);
         }
       }
     } catch {
@@ -200,7 +214,7 @@ wss.on("connection", (socket: WebSocket) => {
     if (realtime instanceof InMemoryPubSubService) {
       const binding = realtime.unbind(socket);
       if (binding) {
-        void rooms.handleDisconnect(binding.roomCode, binding.participantId);
+        void rooms.handleDisconnect(binding.roomCode, binding.participantId, binding.connectionId);
       }
     }
   });

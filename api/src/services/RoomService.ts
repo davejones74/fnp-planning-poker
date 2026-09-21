@@ -28,6 +28,7 @@ import type { RoomRepository } from "./RoomRepository.ts";
 export interface RoomServiceOptions {
   deck?: CardValue[];
   roomExpiryHours?: number;
+  participantOfflineGraceMinutes?: number;
 }
 
 export interface JoinResult {
@@ -37,13 +38,21 @@ export interface JoinResult {
 
 const MILLIS_PER_HOUR = 3_600_000;
 
+function connectionKey(roomCode: string, participantId: string): string {
+  return `${roomCode}:${participantId}`;
+}
+
 export class RoomService {
   private readonly deck: readonly CardValue[];
   private readonly roomExpiryMs: number;
+  private readonly participantOfflineGraceMs: number;
 
   private readonly repo: RoomRepository;
   private readonly pubsub: PubSubService;
   private readonly now: () => Date;
+
+  /** Tracks active connections per participant: "roomCode:participantId" -> Set<connectionId> */
+  private readonly connections = new Map<string, Set<string>>();
 
   constructor(
     repo: RoomRepository,
@@ -57,28 +66,33 @@ export class RoomService {
     const hours = options.roomExpiryHours ?? 24;
     this.roomExpiryMs =
       (Number.isFinite(hours) && hours > 0 ? hours : 24) * MILLIS_PER_HOUR;
+    const graceMinutes = options.participantOfflineGraceMinutes ?? 60;
+    this.participantOfflineGraceMs =
+      (Number.isFinite(graceMinutes) && graceMinutes > 0 ? graceMinutes : 60) * 60_000;
     this.now = now;
   }
 
   async createRoom(rawDisplayName: unknown): Promise<{ room: Room; participant: Participant }> {
     const displayName = this.requireDisplayName(rawDisplayName);
     const code = await this.generateUniqueCode();
+    const nowIso = this.iso(this.now());
     const facilitator: Participant = {
       id: generateId("p"),
       displayName,
-      joinedAt: this.iso(this.now()),
+      joinedAt: nowIso,
+      lastSeenAt: nowIso,
       isFacilitator: true,
       connected: true,
     };
     const round: Round = {
       id: generateId("r"),
       status: "voting",
-      startedAt: this.iso(this.now()),
+      startedAt: nowIso,
     };
     const room: Room = {
       id: generateId("room"),
       code,
-      createdAt: this.iso(this.now()),
+      createdAt: nowIso,
       expiresAt: this.expiresAt(),
       facilitatorId: facilitator.id,
       participants: new Map([[facilitator.id, facilitator]]),
@@ -97,12 +111,14 @@ export class RoomService {
   ): Promise<JoinResult> {
     const room = await this.loadRoom(code);
     const displayName = this.requireDisplayName(rawDisplayName);
+    const nowIso = this.iso(this.now());
 
     if (typeof requestedParticipantId === "string") {
       const existing = room.participants.get(requestedParticipantId);
       if (existing) {
         // Resuming after an offline spell must put the participant back online
         // for everyone else; otherwise rejoiners stay red until a socket event.
+        existing.lastSeenAt = nowIso;
         if (!existing.connected) {
           existing.connected = true;
           await this.persist(room);
@@ -131,7 +147,8 @@ export class RoomService {
     const participant: Participant = {
       id: generateId("p"),
       displayName,
-      joinedAt: this.iso(this.now()),
+      joinedAt: nowIso,
+      lastSeenAt: nowIso,
       isFacilitator: false,
       connected: true,
     };
@@ -486,6 +503,7 @@ export class RoomService {
       throw new ApiError("CONFLICT", 409, "The facilitator cannot remove themselves.");
     }
     room.participants.delete(targetParticipantId);
+    this.connections.delete(connectionKey(room.code, targetParticipantId));
     await this.persist(room);
     await this.pubsub.publishToRoom(room.code, {
       type: "participant.left",
@@ -497,29 +515,106 @@ export class RoomService {
     this.pubsub.disconnectParticipant(room.code, targetParticipantId);
   }
 
-  async handleConnect(code: string, participantId: string): Promise<void> {
+  /** Allows a participant to explicitly leave the room. */
+  async leaveRoom(code: string, participantId: string): Promise<void> {
     const room = await this.loadRoom(code);
-    const participant = this.requireParticipant(room, participantId);
-    if (participant.connected) return;
-    participant.connected = true;
+    const target = room.participants.get(participantId);
+    if (!target) {
+      throw new ApiError("NOT_IN_ROOM", 403, "You are not a participant of this room.");
+    }
+    room.participants.delete(participantId);
+    this.connections.delete(connectionKey(room.code, participantId));
+    const wasFacilitator = target.isFacilitator;
+    if (wasFacilitator) this.promoteNextFacilitator(room);
     await this.persist(room);
     await this.pubsub.publishToRoom(room.code, {
+      type: "participant.left",
+      roomCode: room.code,
+      participant: { id: target.id, displayName: target.displayName },
+    });
+    this.pubsub.disconnectParticipant(room.code, participantId);
+  }
+
+  /**
+   * Promotes the next participant (earliest joined, preferring online) to facilitator.
+   * If no participants remain, the room is left without a facilitator.
+   */
+  private promoteNextFacilitator(room: Room): void {
+    const candidates = [...room.participants.values()].sort(
+      (a, b) => a.joinedAt.localeCompare(b.joinedAt),
+    );
+    const next = candidates.find((p) => p.connected) ?? candidates[0];
+    if (!next) {
+      room.facilitatorId = "";
+      return;
+    }
+    next.isFacilitator = true;
+    room.facilitatorId = next.id;
+    // Notify clients of the new facilitator
+    this.pubsub.publishToRoom(room.code, {
       type: "participant.updated",
       roomCode: room.code,
       participant: {
-        id: participant.id,
-        displayName: participant.displayName,
-        connected: true,
+        id: next.id,
+        displayName: next.displayName,
+        connected: next.connected,
+        isFacilitator: true,
       },
     });
   }
 
-  async handleDisconnect(code: string, participantId: string): Promise<void> {
+  async handleConnect(
+    code: string,
+    participantId: string,
+    connectionId: string,
+  ): Promise<void> {
+    const room = await this.loadRoom(code);
+    const participant = this.requireParticipant(room, participantId);
+    const key = connectionKey(room.code, participantId);
+    let set = this.connections.get(key);
+    if (!set) {
+      set = new Set();
+      this.connections.set(key, set);
+    }
+    const firstConnection = set.size === 0;
+    set.add(connectionId);
+    participant.lastSeenAt = this.iso(this.now());
+    if (firstConnection || !participant.connected) {
+      participant.connected = true;
+      await this.persist(room);
+      await this.pubsub.publishToRoom(room.code, {
+        type: "participant.updated",
+        roomCode: room.code,
+        participant: {
+          id: participant.id,
+          displayName: participant.displayName,
+          connected: true,
+        },
+      });
+    }
+  }
+
+  async handleDisconnect(
+    code: string,
+    participantId: string,
+    connectionId: string,
+  ): Promise<void> {
     try {
       const room = await this.loadRoom(code);
       const participant = room.participants.get(participantId);
-      if (!participant || !participant.connected) return;
+      if (!participant) return;
+      const key = connectionKey(room.code, participantId);
+      const set = this.connections.get(key);
+      let remaining = 0;
+      if (set) {
+        set.delete(connectionId);
+        remaining = set.size;
+        if (remaining === 0) this.connections.delete(key);
+      }
+      if (remaining > 0) return; // still has live connections
+      if (!participant.connected) return;
       participant.connected = false;
+      participant.lastSeenAt = this.iso(this.now());
       await this.persist(room);
       await this.pubsub.publishToRoom(room.code, {
         type: "participant.updated",
@@ -556,7 +651,35 @@ export class RoomService {
       );
     }
     this.touch(room);
+    const removed = this.cleanupStaleParticipants(room);
+    if (removed.length > 0) await this.persist(room);
     return room;
+  }
+
+  /** Removes offline participants older than the grace period (facilitator exempt). */
+  private cleanupStaleParticipants(room: Room): { id: string; displayName: string }[] {
+    const now = this.now().getTime();
+    const removed: { id: string; displayName: string }[] = [];
+    for (const [id, participant] of room.participants) {
+      if (participant.isFacilitator) continue;
+      if (participant.connected) continue;
+      const lastSeen = participant.lastSeenAt
+        ? new Date(participant.lastSeenAt).getTime()
+        : now;
+      if (now - lastSeen >= this.participantOfflineGraceMs) {
+        room.participants.delete(id);
+        this.connections.delete(connectionKey(room.code, id));
+        removed.push({ id, displayName: participant.displayName });
+      }
+    }
+    for (const participant of removed) {
+      this.pubsub.publishToRoom(room.code, {
+        type: "participant.left",
+        roomCode: room.code,
+        participant,
+      });
+    }
+    return removed;
   }
 
   private requireVoting(round: Round): void {

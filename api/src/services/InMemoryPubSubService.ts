@@ -5,6 +5,7 @@ import type { PubSubService } from "./PubSubService.ts";
 interface Binding {
   roomCode: string;
   participantId: string;
+  connectionId: string;
 }
 
 /**
@@ -17,7 +18,7 @@ export class InMemoryPubSubService implements PubSubService {
   private readonly roomSockets = new Map<string, Set<WebSocket>>();
   private readonly socketBinding = new Map<WebSocket, Binding>();
 
-  bind(socket: WebSocket, roomCode: string, participantId: string): void {
+  bind(socket: WebSocket, roomCode: string, participantId: string, connectionId: string): void {
     const existing = this.socketBinding.get(socket);
     if (existing) this.unbind(socket);
     let sockets = this.roomSockets.get(roomCode);
@@ -26,7 +27,7 @@ export class InMemoryPubSubService implements PubSubService {
       this.roomSockets.set(roomCode, sockets);
     }
     sockets.add(socket);
-    this.socketBinding.set(socket, { roomCode, participantId });
+    this.socketBinding.set(socket, { roomCode, participantId, connectionId });
   }
 
   unbind(socket: WebSocket): Binding | undefined {

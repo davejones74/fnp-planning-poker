@@ -14,6 +14,7 @@ import { importStories } from "./functions/importStories.ts";
 import { startStoryEstimation } from "./functions/startStoryEstimation.ts";
 import { recordAgreedEstimate } from "./functions/recordAgreedEstimate.ts";
 import { removeParticipant } from "./functions/removeParticipant.ts";
+import { leaveRoom } from "./functions/leaveRoom.ts";
 import { negotiate } from "./functions/negotiate.ts";
 import { pubsubEvents } from "./functions/pubsubEvents.ts";
 import { me } from "./functions/me.ts";
@@ -168,6 +169,13 @@ app.http("removeParticipant", {
   authLevel: "anonymous",
   route: "rooms/{code}/participants/remove",
   handler: toAzure(wrap(removeParticipant)),
+});
+
+app.http("leaveRoom", {
+  methods: ["POST"],
+  authLevel: "anonymous",
+  route: "rooms/{code}/participants/leave",
+  handler: toAzure(wrap(leaveRoom)),
 });
 
 app.http("negotiate", {

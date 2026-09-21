@@ -25,5 +25,6 @@ export const realtime = configuration.webPubSubConnectionString
 export const rooms = new RoomService(roomRepository, realtime, {
   deck: configuration.defaultDeck,
   roomExpiryHours: configuration.roomExpiryHours,
+  participantOfflineGraceMinutes: configuration.participantOfflineGraceMinutes,
 });
 export const jira = new JiraClient(configuration);

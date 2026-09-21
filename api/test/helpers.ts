@@ -1,6 +1,6 @@
 import type { RoomEvent } from "../../shared/types.ts";
 import { InMemoryRoomRepository } from "../src/services/InMemoryRoomRepository.ts";
-import { RoomService } from "../src/services/RoomService.ts";
+import { RoomService, type RoomServiceOptions } from "../src/services/RoomService.ts";
 
 export class FakeClock {
   private current: Date;
@@ -46,10 +46,13 @@ export interface Harness {
   service: RoomService;
 }
 
-export function makeHarness(clock: FakeClock = new FakeClock()): Harness {
+export function makeHarness(
+  clock: FakeClock = new FakeClock(),
+  options: RoomServiceOptions = {},
+): Harness {
   const repository = new InMemoryRoomRepository();
   const pubsub = new FakePubSub();
-  const service = new RoomService(repository, pubsub, {}, () => clock.now());
+  const service = new RoomService(repository, pubsub, options, () => clock.now());
   return { clock, repository, pubsub, service };
 }
 

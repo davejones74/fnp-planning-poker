@@ -1,15 +1,22 @@
 import { jsonResponse } from "../shared/http.ts";
 import { rooms } from "../services/index.ts";
+import { randomBytes } from "node:crypto";
 
 const SYS_CONNECTED = "azure.webpubsub.sys.connected";
 const SYS_DISCONNECTED = "azure.webpubsub.sys.disconnected";
 
+function randomConnectionId(): string {
+  return `c_${randomBytes(8).toString("hex")}`;
+}
+
 const PRESENCE: Record<
   string,
-  (roomCode: string, participantId: string) => Promise<void>
+  (roomCode: string, participantId: string, connectionId: string) => Promise<void>
 > = {
-  [SYS_CONNECTED]: (roomCode, participantId) => rooms.handleConnect(roomCode, participantId),
-  [SYS_DISCONNECTED]: (roomCode, participantId) => rooms.handleDisconnect(roomCode, participantId),
+  [SYS_CONNECTED]: (roomCode, participantId, connectionId) =>
+    rooms.handleConnect(roomCode, participantId, connectionId),
+  [SYS_DISCONNECTED]: (roomCode, participantId, connectionId) =>
+    rooms.handleDisconnect(roomCode, participantId, connectionId),
 };
 
 /**
@@ -20,10 +27,14 @@ const PRESENCE: Record<
  *     disconnect marks exactly that participant offline and every other tab in
  *     the room hears `participant.updated`.
  *
+ *   - `ce-connectionid` (when present) identifies the specific WebSocket
+ *     connection, allowing the server to track multiple connections per
+ *     participant and ignore stale disconnects from old connections.
+ *
  * Web PubSub delivers events as CloudEvents in *binary* format: the metadata is
- * in `ce-*` request headers (`ce-type`, `ce-userId`) and the body is empty JSON.
- * The service also validates every registered URL with a CloudEvents
- * abuse-protection OPTIONS request, which must answer with
+ * in `ce-*` request headers (`ce-type`, `ce-userId`, `ce-connectionid`) and the
+ * body is empty JSON. The service also validates every registered URL with a
+ * CloudEvents abuse-protection OPTIONS request, which must answer with
  * `WebHook-Allowed-Origin`; without it no events are ever delivered.
  */
 export async function pubsubEvents(request: Request): Promise<Response> {
@@ -52,7 +63,8 @@ export async function pubsubEvents(request: Request): Promise<Response> {
   const ceType = request.headers.get("ce-type");
   if (ceType) {
     const userId = request.headers.get("ce-userid") ?? "";
-    await dispatch(ceType, userId);
+    const connectionId = request.headers.get("ce-connectionid") ?? randomConnectionId();
+    await dispatch(ceType, userId, connectionId);
     return jsonResponse(200, {});
   }
 
@@ -60,22 +72,31 @@ export async function pubsubEvents(request: Request): Promise<Response> {
   for (const event of await readCloudEvents(request)) {
     const type = typeof event.type === "string" ? event.type : "";
     const userId = event.data?.userId;
-    if (typeof userId === "string") await dispatch(type, userId);
+    const rawConnectionId = event.data?.connectionId;
+    const connectionId =
+      typeof rawConnectionId === "string" && rawConnectionId
+        ? rawConnectionId
+        : randomConnectionId();
+    if (typeof userId === "string") await dispatch(type, userId, connectionId);
   }
   return jsonResponse(200, {});
 }
 
-async function dispatch(type: string, userId: string): Promise<void> {
+async function dispatch(
+  type: string,
+  userId: string,
+  connectionId: string,
+): Promise<void> {
   const handler = PRESENCE[type];
   if (!handler) return;
   const parsed = parseUserId(userId);
   if (!parsed) return;
-  await handler(parsed.roomCode, parsed.participantId);
+  await handler(parsed.roomCode, parsed.participantId, connectionId);
 }
 
 interface CloudEvent {
   type?: unknown;
-  data?: { userId?: unknown };
+  data?: { userId?: unknown; connectionId?: unknown };
 }
 
 async function readCloudEvents(request: Request): Promise<CloudEvent[]> {

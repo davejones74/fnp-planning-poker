@@ -24,6 +24,7 @@ describe("pubsubEvents upstream handler", () => {
         headers: {
           "ce-type": "azure.webpubsub.sys.disconnected",
           "ce-userid": `${room.code}:${participant.id}`,
+          "ce-connectionid": "conn-1",
         },
       }),
     );
@@ -32,9 +33,33 @@ describe("pubsubEvents upstream handler", () => {
     assert.equal(connected(after.participants, participant.id), false);
   });
 
+  it("keeps a participant online when only one of two connections drops", async () => {
+    const { room, participant } = await rooms.createRoom("Multi");
+    try {
+      await rooms.handleConnect(room.code, participant.id, "conn-a");
+      await rooms.handleConnect(room.code, participant.id, "conn-b");
+      const res = await pubsubEvents(
+        new Request(URL, {
+          method: "POST",
+          headers: {
+            "ce-type": "azure.webpubsub.sys.disconnected",
+            "ce-userid": `${room.code}:${participant.id}`,
+            "ce-connectionid": "conn-a",
+          },
+        }),
+      );
+      assert.equal(res.status, 200);
+      const after = await rooms.getRoom(room.code);
+      assert.equal(connected(after.participants, participant.id), true);
+    } finally {
+      // Do not leak an online participant into other tests sharing the singleton.
+      await rooms.handleDisconnect(room.code, participant.id, "conn-b");
+    }
+  });
+
   it("marks a participant online from a binary connected event", async () => {
     const { room, participant } = await rooms.createRoom("Conn");
-    await rooms.handleDisconnect(room.code, participant.id);
+    await rooms.handleDisconnect(room.code, participant.id, "conn-1");
 
     const res = await pubsubEvents(
       new Request(URL, {
@@ -42,6 +67,7 @@ describe("pubsubEvents upstream handler", () => {
         headers: {
           "ce-type": "azure.webpubsub.sys.connected",
           "ce-userid": `${room.code}:${participant.id}`,
+          "ce-connectionid": "conn-2",
         },
       }),
     );
@@ -58,7 +84,10 @@ describe("pubsubEvents upstream handler", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           type: "azure.webpubsub.sys.disconnected",
-          data: { userId: `${room.code}:${participant.id}` },
+          data: {
+            userId: `${room.code}:${participant.id}`,
+            connectionId: "conn-batch",
+          },
         }),
       }),
     );

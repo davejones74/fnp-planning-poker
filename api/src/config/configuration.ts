@@ -19,6 +19,8 @@ export interface Configuration {
   jiraHost?: string;
   /** Project key prefix used to filter imported issues, e.g. PAY */
   jiraProjectKey?: string;
+  /** Minutes an offline participant is retained before being cleaned up. */
+  participantOfflineGraceMinutes: number;
 }
 
 export function loadConfiguration(
@@ -32,6 +34,10 @@ export function loadConfiguration(
   if (!DECKS[requestedDeck]) {
     console.warn(`Unknown DEFAULT_DECK "${requestedDeck}", falling back to fandp.`);
   }
+
+  const graceMinutes = Number(env.PARTICIPANT_OFFLINE_GRACE_MINUTES ?? "60");
+  const participantOfflineGraceMinutes =
+    Number.isFinite(graceMinutes) && graceMinutes > 0 ? graceMinutes : 60;
 
   return {
     adminUsers: (env.ADMIN_USERS ?? "")
@@ -51,5 +57,6 @@ export function loadConfiguration(
     jiraMock: env.JIRA_MOCK === "1" || env.JIRA_MOCK?.toLowerCase() === "true",
     jiraHost: env.JIRA_HOST?.trim() || "https://hmcts.atlassian.net",
     jiraProjectKey: (env.JIRA_PROJECT_KEY ?? env.KEY)?.trim() || undefined,
+    participantOfflineGraceMinutes,
   };
 }
