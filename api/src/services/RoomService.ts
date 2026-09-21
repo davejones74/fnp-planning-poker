@@ -665,7 +665,7 @@ export class RoomService {
       if (participant.connected) continue;
       const lastSeen = participant.lastSeenAt
         ? new Date(participant.lastSeenAt).getTime()
-        : now;
+        : new Date(participant.joinedAt).getTime();
       if (now - lastSeen >= this.participantOfflineGraceMs) {
         room.participants.delete(id);
         this.connections.delete(connectionKey(room.code, id));

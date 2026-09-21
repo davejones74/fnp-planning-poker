@@ -209,4 +209,23 @@ describe("RoomService - stale offline cleanup", () => {
     const later = await h.service.getRoom(room.code);
     assert.ok(!later.participants.some((p) => p.id === alice.id));
   });
+
+  it("sweeps a legacy participant with no lastSeenAt based on joinedAt", async () => {
+    const clock = new FakeClock();
+    const h = makeHarness(clock, {
+      participantOfflineGraceMinutes: 60,
+      roomExpiryHours: 24 * 7,
+    });
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    const stored = await h.repository.get(room.code);
+    const storedAlice = stored?.participants.get(alice.id);
+    assert.ok(storedAlice);
+    delete storedAlice.lastSeenAt; // pre-migration row predates the field
+    storedAlice.connected = false; // offline since before the field existed
+
+    clock.advance(24 * 60 * 60 * 1000); // a day later, still offline
+    const after = await h.service.getRoom(room.code);
+    assert.ok(!after.participants.some((p) => p.id === alice.id));
+  });
 });
