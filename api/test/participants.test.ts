@@ -6,8 +6,8 @@ import { FakeClock, makeHarness } from "./helpers.ts";
 
 /**
  * Regression suite for the duplicate-participant / session-identity fixes:
- * explicit leave, facilitator handover, stale-offline cleanup and
- * connection-aware presence.
+ * explicit leave, facilitator handover, a unique-name, never-pruned roster and
+ * connection-aware online/offline presence.
  */
 describe("RoomService - leaving", () => {
   it("removes the leaver and closes their connections", async () => {
@@ -135,57 +135,59 @@ describe("RoomService - leaving", () => {
   });
 });
 
-describe("RoomService - stale offline cleanup", () => {
-  it("sweeps offline participants past the grace period and frees capacity", async () => {
+describe("RoomService - presence roster", () => {
+  it("keeps an offline participant on the roster and marks them offline", async () => {
     const clock = new FakeClock();
-    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
-    const { room, participant } = await h.service.createRoom("Dave");
-    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
-    await h.service.handleDisconnect(room.code, alice.id, "alice-tab");
-    h.pubsub.clear();
-
-    clock.advance(0.5 * 60 * 60 * 1000); // 30 min: inside the grace window
-    let after = await h.service.getRoom(room.code);
-    assert.ok(after.participants.some((p) => p.id === alice.id));
-
-    clock.advance(31 * 60 * 1000); // 61 min total: past the window
-    after = await h.service.getRoom(room.code);
-    assert.ok(!after.participants.some((p) => p.id === alice.id));
-    assert.ok(after.participants.some((p) => p.id === participant.id));
-
-    const left = h.pubsub
-      .forRoom(room.code)
-      .find((entry) => entry.event.type === "participant.left");
-    assert.ok(left?.event.type === "participant.left");
-    if (left?.event.type === "participant.left") {
-      assert.equal(left.event.participant.id, alice.id);
-    }
-
-    // The freed slot accepts a fresh join.
-    const { participant: bob } = await h.service.joinRoom(room.code, "Bob");
-    assert.ok(bob.id);
-  });
-
-  it("sweeps an online participant whose presence went stale (ghost)", async () => {
-    const clock = new FakeClock();
-    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
+    const h = makeHarness(clock, {
+      participantOfflineGraceMinutes: 60,
+      roomExpiryHours: 24 * 7,
+    });
     const { room, participant } = await h.service.createRoom("Dave");
     const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
     await h.service.handleConnect(room.code, alice.id, "alice-tab");
+    await h.service.handleDisconnect(room.code, alice.id, "alice-tab");
+    h.pubsub.clear();
 
-    // The Web PubSub disconnect for alice's tab was lost, so she still looks
-    // "connected" — but nothing has refreshed her presence for 10 hours. Her
-    // tab is gone; the sweep must remove her anyway.
-    clock.advance(10 * 60 * 60 * 1000);
+    clock.advance(24 * 60 * 60 * 1000); // a full day offline
     const after = await h.service.getRoom(room.code);
-    assert.ok(!after.participants.some((p) => p.id === alice.id));
+    assert.ok(after.participants.some((p) => p.id === alice.id));
+    assert.equal(
+      after.participants.find((p) => p.id === alice.id)?.connected,
+      false,
+    );
     assert.ok(after.participants.some((p) => p.id === participant.id));
   });
 
-  it("a presence heartbeat keeps a participant from being swept", async () => {
+  it("flags a ghost online participant offline after the grace period but never removes them", async () => {
     const clock = new FakeClock();
     const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
-    const { room, participant } = await h.service.createRoom("Dave");
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
+    await h.service.handleConnect(room.code, alice.id, "alice-tab"); // lastSeen @ t0
+    h.pubsub.clear();
+
+    clock.advance(10 * 60 * 60 * 1000); // the Web PubSub disconnect never arrived
+    const after = await h.service.getRoom(room.code);
+    assert.ok(after.participants.some((p) => p.id === alice.id));
+    assert.equal(
+      after.participants.find((p) => p.id === alice.id)?.connected,
+      false,
+    );
+    const update = h.pubsub
+      .forRoom(room.code)
+      .find(
+        (entry) =>
+          entry.event.type === "participant.updated" &&
+          entry.event.participant.id === alice.id &&
+          entry.event.participant.connected === false,
+      );
+    assert.ok(update?.event.type === "participant.updated");
+  });
+
+  it("a presence heartbeat keeps a participant online", async () => {
+    const clock = new FakeClock();
+    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
+    const { room } = await h.service.createRoom("Dave");
     const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
     await h.service.handleConnect(room.code, alice.id, "alice-tab");
 
@@ -196,11 +198,13 @@ describe("RoomService - stale offline cleanup", () => {
       await h.service.touchParticipant(room.code, alice.id);
     }
     const after = await h.service.getRoom(room.code);
-    assert.ok(after.participants.some((p) => p.id === alice.id));
-    assert.ok(after.participants.some((p) => p.id === participant.id));
+    assert.equal(
+      after.participants.find((p) => p.id === alice.id)?.connected,
+      true,
+    );
   });
 
-  it("stops keeping a participant the moment the heartbeat stops", async () => {
+  it("flags a participant offline once the heartbeat stops", async () => {
     const clock = new FakeClock();
     const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
     const { room } = await h.service.createRoom("Dave");
@@ -210,7 +214,25 @@ describe("RoomService - stale offline cleanup", () => {
 
     clock.advance(61 * 60 * 1000); // tab closed; no heartbeat for over an hour
     const after = await h.service.getRoom(room.code);
-    assert.ok(!after.participants.some((p) => p.id === alice.id));
+    assert.ok(after.participants.some((p) => p.id === alice.id));
+    assert.equal(
+      after.participants.find((p) => p.id === alice.id)?.connected,
+      false,
+    );
+  });
+
+  it("flags the facilitator offline after the grace period without removing them", async () => {
+    const clock = new FakeClock();
+    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
+    const { room, participant } = await h.service.createRoom("Dave");
+
+    clock.advance(61 * 60 * 1000);
+    const after = await h.service.getRoom(room.code);
+    assert.ok(after.participants.some((p) => p.id === participant.id));
+    assert.equal(
+      after.participants.find((p) => p.id === participant.id)?.connected,
+      false,
+    );
   });
 
   it("a presence heartbeat revives a participant whose disconnect was missed", async () => {
@@ -237,38 +259,122 @@ describe("RoomService - stale offline cleanup", () => {
     assert.ok(revived?.event.type === "participant.updated");
   });
 
-  it("never sweeps the facilitator even when offline", async () => {
-    const clock = new FakeClock();
-    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
-    const { room, participant } = await h.service.createRoom("Dave");
-    await h.service.handleDisconnect(room.code, participant.id, "dave-tab");
+  it("rejoining with an existing name replaces the previous participant", async () => {
+    const h = makeHarness();
+    const { room } = await h.service.createRoom("Dave");
+    const { participant: original } = await h.service.joinRoom(room.code, "Jack");
+    h.pubsub.clear();
 
-    clock.advance(10 * 60 * 60 * 1000);
+    const { participant: replacement } = await h.service.joinRoom(room.code, "Jack");
+
+    assert.notEqual(replacement.id, original.id);
     const after = await h.service.getRoom(room.code);
-    assert.ok(after.participants.some((p) => p.id === participant.id));
+    assert.ok(!after.participants.some((p) => p.id === original.id));
+    assert.ok(after.participants.some((p) => p.id === replacement.id));
+    assert.equal(
+      after.participants.filter((p) => p.displayName === "Jack").length,
+      1,
+    );
+    const left = h.pubsub
+      .forRoom(room.code)
+      .find(
+        (entry) =>
+          entry.event.type === "participant.left" &&
+          entry.event.participant.id === original.id,
+      );
+    assert.ok(left?.event.type === "participant.left");
+    assert.deepEqual(h.pubsub.disconnects, [
+      { roomCode: room.code, participantId: original.id },
+    ]);
   });
 
-  it("resuming re-arms the stale timer", async () => {
-    const clock = new FakeClock();
-    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
+  it("matches names case-insensitively and trimmed", async () => {
+    const h = makeHarness();
+    const { room } = await h.service.createRoom("Boss");
+    const { participant: original } = await h.service.joinRoom(room.code, "  Alice ");
+    const { participant: replacement } = await h.service.joinRoom(room.code, "alice");
+
+    assert.notEqual(replacement.id, original.id);
+    const after = await h.service.getRoom(room.code);
+    assert.ok(!after.participants.some((p) => p.id === original.id));
+    const aliceNames = after.participants
+      .filter((p) => p.displayName.toLowerCase().trim() === "alice")
+      .map((p) => p.displayName);
+    assert.deepEqual(aliceNames, ["alice"]); // the latest joiner's casing wins
+  });
+
+  it("resuming a session reuses the identity without tripping name uniqueness", async () => {
+    const h = makeHarness();
     const { room } = await h.service.createRoom("Dave");
     const { participant: alice } = await h.service.joinRoom(room.code, "Alice");
-    await h.service.handleDisconnect(room.code, alice.id, "alice-tab"); // lastSeen @ t0
 
-    clock.advance(30 * 60 * 1000); // halfway to stale (t30)
-    await h.service.joinRoom(room.code, "Alice", alice.id); // resume: lastSeen @ t30
-    await h.service.handleDisconnect(room.code, alice.id, "alice-tab"); // drop again @ t30
+    const resumed = await h.service.joinRoom(room.code, "Alice", alice.id);
 
-    clock.advance(50 * 60 * 1000); // t80: 50 min since the resume (not 80) — kept
+    assert.equal(resumed.participant.id, alice.id);
     const after = await h.service.getRoom(room.code);
     assert.ok(after.participants.some((p) => p.id === alice.id));
-
-    clock.advance(20 * 60 * 1000); // t100: 70 min since the resume — swept
-    const later = await h.service.getRoom(room.code);
-    assert.ok(!later.participants.some((p) => p.id === alice.id));
+    assert.equal(
+      after.participants.filter((p) => p.displayName === "Alice").length,
+      1,
+    );
   });
 
-  it("sweeps a legacy participant with no lastSeenAt based on joinedAt", async () => {
+  it("an online facilitator is protected from name replacement", async () => {
+    const h = makeHarness();
+    const { room, participant: sian } = await h.service.createRoom("Sian");
+    await h.service.handleConnect(room.code, sian.id, "sian-tab");
+
+    await assert.rejects(h.service.joinRoom(room.code, "Sian"), (err: unknown) => {
+      const e = err as ApiError;
+      return e instanceof ApiError && e.code === "NAME_TAKEN" && e.status === 409;
+    });
+
+    const after = await h.service.getRoom(room.code);
+    assert.ok(after.participants.some((p) => p.id === sian.id));
+    assert.equal(
+      after.participants.find((p) => p.id === sian.id)?.isFacilitator,
+      true,
+    );
+    assert.equal(after.participants.filter((p) => p.isFacilitator).length, 1);
+  });
+
+  it("an offline facilitator's name can be reclaimed along with the role", async () => {
+    const h = makeHarness();
+    const { room, participant: sian } = await h.service.createRoom("Sian");
+    await h.service.handleDisconnect(room.code, sian.id, "sian-tab");
+
+    const { participant: replacement } = await h.service.joinRoom(room.code, "Sian");
+
+    assert.notEqual(replacement.id, sian.id);
+    const after = await h.service.getRoom(room.code);
+    assert.equal(
+      after.participants.find((p) => p.id === replacement.id)?.isFacilitator,
+      true,
+    );
+    assert.equal(after.participants.filter((p) => p.isFacilitator).length, 1);
+    assert.ok(!after.participants.some((p) => p.id === sian.id));
+  });
+
+  it("a facilitator absent past the grace period loses the name to a reclaimer", async () => {
+    const clock = new FakeClock();
+    const h = makeHarness(clock, { participantOfflineGraceMinutes: 60 });
+    const { room, participant: sian } = await h.service.createRoom("Sian");
+    await h.service.handleConnect(room.code, sian.id, "sian-tab");
+
+    clock.advance(61 * 60 * 1000); // missed disconnect, no heartbeat
+    const { participant: replacement } = await h.service.joinRoom(room.code, "Sian");
+
+    assert.notEqual(replacement.id, sian.id);
+    const after = await h.service.getRoom(room.code);
+    assert.equal(
+      after.participants.find((p) => p.id === replacement.id)?.isFacilitator,
+      true,
+    );
+    assert.equal(after.participants.filter((p) => p.isFacilitator).length, 1);
+    assert.ok(!after.participants.some((p) => p.id === sian.id));
+  });
+
+  it("flags a legacy participant with no lastSeenAt offline based on joinedAt", async () => {
     const clock = new FakeClock();
     const h = makeHarness(clock, {
       participantOfflineGraceMinutes: 60,
@@ -280,10 +386,14 @@ describe("RoomService - stale offline cleanup", () => {
     const storedAlice = stored?.participants.get(alice.id);
     assert.ok(storedAlice);
     delete storedAlice.lastSeenAt; // pre-migration row predates the field
-    storedAlice.connected = false; // offline since before the field existed
+    storedAlice.connected = true;
 
-    clock.advance(24 * 60 * 60 * 1000); // a day later, still offline
+    clock.advance(24 * 60 * 60 * 1000); // a day later, still "online" on paper
     const after = await h.service.getRoom(room.code);
-    assert.ok(!after.participants.some((p) => p.id === alice.id));
+    assert.ok(after.participants.some((p) => p.id === alice.id));
+    assert.equal(
+      after.participants.find((p) => p.id === alice.id)?.connected,
+      false,
+    );
   });
 });

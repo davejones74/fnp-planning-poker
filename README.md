@@ -25,19 +25,21 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
   the Web PubSub **Free_F1** ceiling of 20 concurrent connections; the counter next to
   the player list shows `Players: N / 20`
 - **Presence:** a green dot marks participants who are online, a red dot those who
-  dropped off (updated by Web PubSub connect/disconnect events)
+  dropped off. Live tabs ping a presence heartbeat every minute; a participant who
+  stops pinging (including one whose Web PubSub disconnect was never delivered) is
+  flagged offline after `PARTICIPANT_OFFLINE_GRACE_MINUTES` (default 60) — the roster
+  itself is kept until an explicit leave or kick, so nobody silently disappears
+- **Unique names:** a display name can appear on the roster at most once (matched
+  case-insensitively and trimmed). A fresh join reusing an existing name replaces
+  the previous holder of that name (their sockets are closed); the facilitator is
+  protected while online, but once offline a same-name rejoin reclaims both the
+  name and the facilitator role
 - **Kick:** the facilitator can remove a participant; their sockets are closed
   immediately and that browser is returned to the home screen
 - **Leave:** any participant (including the facilitator) can leave the room; the
   next participant (earliest joined, preferring online) is promoted to
   facilitator automatically. A local session is cleared on leave, so leaving and
   rejoining starts a fresh participant rather than resurrecting the old identity
-- **Stale cleanup:** an offline participant older than
-  `PARTICIPANT_OFFLINE_GRACE_MINUTES` (default 60) is swept from the room to
-  free a capacity slot; the facilitator is never swept, and reconnecting resets
-  the timer (this is what keeps rooms usable after a colleague drops off for
-  good) — the room session id is kept in `localStorage`, so an accidental refresh
-  still resumes the same participant instead of duplicating them
 - Facilitator can set/edit the story (e.g. JIRA-123 + description)
 - **Import stories into a session backlog** — the facilitator uploads a Jira CSV (or
   RSS/XML) export; issues are parsed in the browser (the file never leaves the machine),
@@ -148,7 +150,7 @@ run with `node --env-file=.env api/src/server.ts`.
 | --- | --- | --- |
 | `PORT` | `8080` | Local dev server port (Azure Functions ignore this) |
 | `ROOM_EXPIRY_HOURS` | `24` | Rooms are auto-expired after this long without activity |
-| `PARTICIPANT_OFFLINE_GRACE_MINUTES` | `60` | After this long offline a participant is swept from the room (facilitator exempt, resets on reconnect) |
+| `PARTICIPANT_OFFLINE_GRACE_MINUTES` | `60` | After this long without a presence heartbeat a participant is flagged offline (resets on heartbeat/resume); the roster row is never removed |
 | `DEFAULT_DECK` | `fandp` | Deck key from `shared/decks.ts` (`fandp` = XS…coffee, or `fibonacci`) |
 | `ADMIN_USERS` | empty | Comma-separated identities allowed to administer (Phase 1: informational) |
 | `WEB_PUBSUB_CONNECTION_STRING` | empty | Azure Web PubSub (empty = in-memory) |
@@ -183,6 +185,7 @@ with the matching HTTP status. Room codes use the alphabet
 | `POST` | `/api/rooms/{code}/stories/dismiss` | Facilitator-only; `{ participantId, keys: string[] }` — removes the selected `estimated` stories from the backlog, returns `{ dismissed, skipped }` |
 | `POST` | `/api/rooms/{code}/participants/remove` | Facilitator-only; `{ participantId, targetParticipantId }` |
 | `POST` | `/api/rooms/{code}/participants/leave` | Any participant (incl. facilitator); `{ participantId }` — removes them, promotes the next online facilitator, and closes their sockets |
+| `POST` | `/api/rooms/{code}/participants/presence` | `{ participantId }` — presence heartbeat from a live tab; refreshes `lastSeenAt` and revives an offline participant |
 | `GET` | `/api/config` | Non-secret client config `{ jiraHost, jiraProjectKey }` used by the import dialog |
 | `GET` | `/api/jira/authorize?room=&returnTo=` | Opens the Atlassian consent screen in a popup (mock consent page when `JIRA_MOCK=1`) |
 | `GET` | `/api/jira/callback` | OAuth callback; exchanges the code and tells the opener via `postMessage` |

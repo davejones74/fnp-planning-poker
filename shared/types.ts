@@ -28,9 +28,10 @@ export interface Participant {
   connected: boolean;
   selectedCard?: CardValue;
   /**
-   * Last time this participant was active (joined/connected). Offline records
-   * older than the stale-participant grace period are cleaned up by
-   * RoomService.loadRoom. Kept server-side; never broadcast.
+   * Last time this participant was active (joined/connected). Participants
+   * older than the offline-grace period are flagged offline by
+   * RoomService.loadRoom; the roster row is kept. Kept server-side; never
+   * broadcast.
    */
   lastSeenAt?: string;
 }

@@ -114,11 +114,13 @@ describe("RoomService - join room", () => {
     });
   });
 
-  it("allows two users to join with the same display name", async () => {
+  it("rejects joining with the name of an online facilitator", async () => {
     const h = makeHarness();
-    const { code } = await roomWithTwo(h, "Dave", "Dave");
-    const first = await h.service.getRoom(code);
-    assert.equal(first.participants.length, 2);
+    const { code } = await roomWithTwo(h);
+    await assert.rejects(h.service.joinRoom(code, "Dave"), (err: unknown) => {
+      const e = err as ApiError;
+      return e instanceof ApiError && e.code === "NAME_TAKEN" && e.status === 409;
+    });
   });
 
   it("returns the existing participant when rejoining with the same session id", async () => {

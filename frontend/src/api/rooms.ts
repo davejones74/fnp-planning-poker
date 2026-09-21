@@ -200,7 +200,7 @@ export const roomsApi = {
   /**
    * Presence heartbeat: proves this browser tab is still really in the room.
    * Web PubSub disconnect events can be lost (a closed tab can linger marked
-   * online), so the server's stale-sweep keys off this live ping instead.
+   * online), so the server's offline pass keys off this live ping instead.
    */
   presence(code: string): Promise<{ ok: boolean }> {
     const participantId = sessionParticipantId(code);

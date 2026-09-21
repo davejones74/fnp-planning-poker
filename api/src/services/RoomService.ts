@@ -42,6 +42,11 @@ function connectionKey(roomCode: string, participantId: string): string {
   return `${roomCode}:${participantId}`;
 }
 
+/** Names are unique per room when compared case-insensitively and trimmed. */
+function normalizeName(name: string): string {
+  return name.trim().toLocaleLowerCase();
+}
+
 export class RoomService {
   private readonly deck: readonly CardValue[];
   private readonly roomExpiryMs: number;
@@ -136,6 +141,28 @@ export class RoomService {
       }
     }
 
+    // Names are unique per room: a fresh participant reusing a name already in
+    // the room replaces the previous holder of that name (the newest wins), so
+    // the roster never shows duplicates. The replaced participant's sockets are
+    // dropped to free a Web PubSub connection. The facilitator is protected
+    // while online — a colleague switching devices cannot hijack the name mid
+    // room — but once the original tab drops (or is flagged offline after the
+    // grace period), a same-name rejoin reclaims the name and the role.
+    const replacedParticipant = this.findParticipantByName(room, displayName);
+    let replacingFacilitator = false;
+    if (replacedParticipant) {
+      if (replacedParticipant.isFacilitator && replacedParticipant.connected) {
+        throw new ApiError(
+          "NAME_TAKEN",
+          409,
+          `"${displayName}" is already in this room as the facilitator.`,
+        );
+      }
+      replacingFacilitator = replacedParticipant.isFacilitator;
+      room.participants.delete(replacedParticipant.id);
+      this.connections.delete(connectionKey(room.code, replacedParticipant.id));
+    }
+
     if (room.participants.size >= MAX_ROOM_PARTICIPANTS) {
       throw new ApiError(
         "ROOM_FULL",
@@ -149,11 +176,26 @@ export class RoomService {
       displayName,
       joinedAt: nowIso,
       lastSeenAt: nowIso,
-      isFacilitator: false,
+      isFacilitator: replacingFacilitator,
       connected: true,
     };
     room.participants.set(participant.id, participant);
+    if (replacingFacilitator) room.facilitatorId = participant.id;
     await this.persist(room);
+
+    if (replacedParticipant) {
+      await this.pubsub.publishToRoom(room.code, {
+        type: "participant.left",
+        roomCode: room.code,
+        participant: {
+          id: replacedParticipant.id,
+          displayName: replacedParticipant.displayName,
+        },
+      });
+      // Drop the replaced participant's sockets so they stop consuming one of
+      // the 20 Web PubSub connections and cannot keep receiving room events.
+      this.pubsub.disconnectParticipant(room.code, replacedParticipant.id);
+    }
     await this.pubsub.publishToRoom(room.code, {
       type: "participant.joined",
       roomCode: room.code,
@@ -677,40 +719,43 @@ export class RoomService {
       );
     }
     this.touch(room);
-    const removed = this.cleanupStaleParticipants(room);
-    if (removed.length > 0) await this.persist(room);
+    const flagged = this.markStaleOffline(room);
+    if (flagged.length > 0) await this.persist(room);
     return room;
   }
 
   /**
-   * Removes participants whose presence has not been refreshed within the
-   * grace period (facilitator exempt). Live tabs refresh lastSeenAt via a
-   * heartbeat; the connected flag alone is not proof a browser is still here —
-   * Web PubSub disconnect events can be lost, leaving a dead tab marked online
-   * forever — so it does not protect a participant from this sweep.
+   * Flags participants offline when their presence has not been refreshed
+   * within the grace period. The roster is never pruned here — names remain
+   * until an explicit leave or kick. Web PubSub disconnect events can be lost,
+   * so a participant still flagged online with no live heartbeat must be
+   * treated as having dropped off; a future heartbeat or resume revives them.
    */
-  private cleanupStaleParticipants(room: Room): { id: string; displayName: string }[] {
+  private markStaleOffline(room: Room): { id: string; displayName: string }[] {
     const now = this.now().getTime();
-    const removed: { id: string; displayName: string }[] = [];
+    const flagged: { id: string; displayName: string }[] = [];
     for (const [id, participant] of room.participants) {
-      if (participant.isFacilitator) continue;
+      if (!participant.connected) continue;
       const lastSeen = participant.lastSeenAt
         ? new Date(participant.lastSeenAt).getTime()
         : new Date(participant.joinedAt).getTime();
       if (now - lastSeen >= this.participantOfflineGraceMs) {
-        room.participants.delete(id);
-        this.connections.delete(connectionKey(room.code, id));
-        removed.push({ id, displayName: participant.displayName });
+        participant.connected = false;
+        flagged.push({ id, displayName: participant.displayName });
       }
     }
-    for (const participant of removed) {
+    for (const participant of flagged) {
       this.pubsub.publishToRoom(room.code, {
-        type: "participant.left",
+        type: "participant.updated",
         roomCode: room.code,
-        participant,
+        participant: {
+          id: participant.id,
+          displayName: participant.displayName,
+          connected: false,
+        },
       });
     }
-    return removed;
+    return flagged;
   }
 
   private requireVoting(round: Round): void {
@@ -725,6 +770,14 @@ export class RoomService {
       throw new ApiError("NOT_IN_ROOM", 403, "You are not a participant of this room.");
     }
     return participant;
+  }
+
+  private findParticipantByName(room: Room, displayName: string): Participant | undefined {
+    const wanted = normalizeName(displayName);
+    for (const participant of room.participants.values()) {
+      if (normalizeName(participant.displayName) === wanted) return participant;
+    }
+    return undefined;
   }
 
   private requireFacilitator(room: Room, participantId: string): Participant {

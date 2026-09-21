@@ -188,8 +188,8 @@ async function enterRoom(
       await roomsApi.leave(code);
     } catch {
       // The server call failed (offline); the participant id is cleared here
-      // anyway so this browser stops reusing it. Any orphaned record is
-      // removed by the server's stale-participant sweep.
+      // anyway so this browser stops reusing it. Any orphaned record is kept
+      // on the roster (flagged offline) until a same-name join replaces it.
     } finally {
       appState.clearSession(code);
       appState.removeRecentRoom(code);
@@ -274,9 +274,9 @@ async function enterRoom(
     if (playersRootRef) updateTimers(playersRootRef, state.room.createdAt);
   }, 1000);
 
-  // Presence heartbeat keeps this tab alive to the server's stale-sweep, even
-  // if a Web PubSub disconnect event for it was lost. Silence failures: the
-  // realtime socket and next join still reconcile on their own.
+  // Presence heartbeat stops the server's offline pass flagging this tab as
+  // offline, even if a Web PubSub disconnect event for it was lost. Silence
+  // failures: the realtime socket and next join still reconcile on their own.
   presenceTimer = setInterval(() => {
     void roomsApi.presence(code).catch(() => {});
   }, 60_000);
