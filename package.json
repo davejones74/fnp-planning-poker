@@ -12,6 +12,7 @@
     "build:api": "node scripts/build-api.mjs",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && npm run build:frontend && npm run build:api",
+    "seed:room": "node scripts/ensure-room.ts",
     "start": "npm run build:frontend && node api/src/server.ts",
     "dev": "npm run build:frontend && node api/src/server.ts",
     "test": "node --test \"api/test/*.test.ts\" \"frontend/test/*.test.ts\""

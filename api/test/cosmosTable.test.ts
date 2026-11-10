@@ -45,4 +45,21 @@ describe("CosmosTableRoomRepository - story backlog", () => {
     const restored = fromEntity(entity as never);
     assert.deepEqual(restored.stories, []);
   });
+
+  it("round-trips the persisted facilitator name", async () => {
+    const h = makeHarness();
+    const { room } = await h.service.createRoom("Sian");
+    const restored = fromEntity(toEntity(room));
+    assert.equal(restored.facilitatorName, "Sian");
+  });
+
+  it("derives the facilitator name for rows written before the column existed", async () => {
+    const h = makeHarness();
+    const { room } = await h.service.createRoom("Dave");
+    const entity = toEntity(room) as unknown as Record<string, unknown>;
+    delete entity.facilitatorName;
+
+    const restored = fromEntity(entity as never);
+    assert.equal(restored.facilitatorName, "Dave");
+  });
 });

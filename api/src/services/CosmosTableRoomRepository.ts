@@ -9,6 +9,8 @@ interface RoomEntity {
   createdAt: string;
   expiresAt: string;
   facilitatorId: string;
+  /** Missing on rows written before the facilitator name was persisted. */
+  facilitatorName?: string;
   deck: string;
   currentRound: string;
   participants: string;
@@ -37,6 +39,7 @@ export function toEntity(room: Room): RoomEntity {
     createdAt: room.createdAt,
     expiresAt: room.expiresAt,
     facilitatorId: room.facilitatorId,
+    facilitatorName: room.facilitatorName,
     deck: JSON.stringify(room.deck),
     currentRound: JSON.stringify(room.currentRound),
     participants: JSON.stringify([...room.participants.values()]),
@@ -50,12 +53,17 @@ export function fromEntity(entity: RoomEntity): Room {
   for (const participant of JSON.parse(entity.participants) as Participant[]) {
     participants.set(participant.id, participant);
   }
+  const facilitator =
+    participants.get(entity.facilitatorId) ??
+    [...participants.values()].find((participant) => participant.isFacilitator);
   const room: Room = {
     id: entity.roomId,
     code: entity.code,
     createdAt: entity.createdAt,
     expiresAt: entity.expiresAt,
     facilitatorId: entity.facilitatorId,
+    // Rows written before the column existed derive the name from the roster.
+    facilitatorName: entity.facilitatorName ?? facilitator?.displayName ?? "",
     deck: JSON.parse(entity.deck) as CardValue[],
     currentRound: JSON.parse(entity.currentRound) as Round,
     participants,

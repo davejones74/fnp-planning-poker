@@ -18,7 +18,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Typecheck, build frontend and API bundle
@@ -40,6 +40,38 @@ jobs:
           # Make pushes succeed (without deploying) until the
           # AZURE_STATIC_WEB_APPS_API_TOKEN secret is added to the repo.
           SKIP_DEPLOY_ON_MISSING_SECRETS: true
+
+  seed_rooms_job:
+    # Runs only after the new code is live, so the deployed RoomService does not
+    # reset the seeded expiry on the next read. The script keeps a marker row and
+    # is a no-op once applied (or when the connection string secret is absent).
+    needs: build_and_deploy_job
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    name: Seed persistent rooms
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure room Z58WPJ with Sian as facilitator
+        env:
+          COSMOS_TABLE_CONNECTION_STRING: ${{ secrets.COSMOS_TABLE_CONNECTION_STRING }}
+          SEED_ROOM_CODE: Z58WPJ
+          SEED_FACILITATOR_NAME: Sian
+        run: |
+          if [ -z "$COSMOS_TABLE_CONNECTION_STRING" ]; then
+            echo "COSMOS_TABLE_CONNECTION_STRING is not configured; skipping room seed."
+            exit 0
+          fi
+          npm run seed:room
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'

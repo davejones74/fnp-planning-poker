@@ -26,8 +26,8 @@ export interface Configuration {
 export function loadConfiguration(
   env: NodeJS.ProcessEnv = process.env,
 ): Configuration {
-  const hours = Number(env.ROOM_EXPIRY_HOURS ?? "24");
-  const roomExpiryHours = Number.isFinite(hours) && hours > 0 ? hours : 24;
+  const hours = Number(env.ROOM_EXPIRY_HOURS ?? "720");
+  const roomExpiryHours = Number.isFinite(hours) && hours > 0 ? hours : 720;
 
   const requestedDeck = env.DEFAULT_DECK?.trim() || "fandp";
   const defaultDeck = DECKS[requestedDeck] ?? DECKS.fandp;

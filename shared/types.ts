@@ -82,6 +82,12 @@ export interface Room {
   createdAt: string;
   expiresAt: string;
   facilitatorId: string;
+  /**
+   * Display name of the facilitator, persisted so the role can be reclaimed
+   * by a same-name join after the participant record is gone. Kept in sync
+   * whenever the facilitator changes.
+   */
+  facilitatorName: string;
   participants: Map<string, Participant>;
   currentRound: Round;
   deck: CardValue[];

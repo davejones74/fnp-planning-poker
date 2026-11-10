@@ -35,7 +35,11 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
   case-insensitively and trimmed). A fresh join reusing an existing name replaces
   the previous holder of that name (their sockets are closed); the facilitator is
   protected while online, but once offline a same-name rejoin reclaims both the
-  name and the facilitator role
+  name and the facilitator role. The facilitator's name is persisted with the room,
+  so the role is inherited even if the old participant record is gone
+- **Room lifetime:** a room expires after **30 days** (`ROOM_EXPIRY_HOURS=720`);
+  whenever the facilitator opens or rejoins the room the expiry is pushed back a
+  full month. Other participants' activity does not keep the room alive
 - **Kick:** the facilitator can remove a participant; their sockets are closed
   immediately and that browser is returned to the home screen
 - **Leave:** any participant (including the facilitator) can leave the room; the
@@ -151,7 +155,7 @@ run with `node --env-file=.env api/src/server.ts`.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `8080` | Local dev server port (Azure Functions ignore this) |
-| `ROOM_EXPIRY_HOURS` | `24` | Rooms are auto-expired after this long without activity |
+| `ROOM_EXPIRY_HOURS` | `720` | Room lifetime (30 days); reset whenever the facilitator enters/rejoins |
 | `PARTICIPANT_OFFLINE_GRACE_MINUTES` | `60` | After this long without a presence heartbeat a participant is flagged offline (resets on heartbeat/resume); the roster row is never removed |
 | `DEFAULT_DECK` | `fandp` | Deck key from `shared/decks.ts` (`fandp` = XS…coffee, or `fibonacci`) |
 | `ADMIN_USERS` | empty | Comma-separated identities allowed to administer (Phase 1: informational) |
@@ -287,7 +291,7 @@ implementations.
 | SPA hosting + API | **Azure Static Web Apps — Free plan** | Serves `dist/frontend` (immutable `index.html` SPA + assets); managed Functions API included in the **1M free executions/mo**; 100 GB bandwidth/sub/mo; 2 custom domains; 3 preview apps for PRs |
 | Authentication | **SWA built-in auth** (service-defined providers) | No auth code in the app: GitHub / Entra ID / Google / X logins via `staticwebapp.config.json`; Functions read `x-ms-client-principal` so `/api/me` becomes real, and the display name comes from the identity |
 | Realtime (WebSockets) | **Azure Web PubSub — Free (F1)** | Managed WebSocket broker; `negotiate` issues a token, clients connect directly to `wss://…/client/hubs`; Functions bindings publish events. **Caps: 20 concurrent connections and 20k messages/day** — fine for a small squad, hard ceiling beyond |
-| Durable rooms & presence | **Azure Cosmos DB — Free tier** (1000 RU/s, 25 GB) | New `RoomRepository` impl via `@azure/data-tables` (Table API) replaces `InMemoryRoomRepository`; room 24h expiry keeps usage tiny; `pubsub` swaps to the Web PubSub service |
+| Durable rooms & presence | **Azure Cosmos DB — Free tier** (1000 RU/s, 25 GB) | New `RoomRepository` impl via `@azure/data-tables` (Table API) replaces `InMemoryRoomRepository`; a 30-day expiry refreshed by the facilitator keeps usage tiny; `pubsub` swaps to the Web PubSub service |
 
 **Deployment & CI/CD — GitHub Actions**: a workflow runs
 `npm ci && npm run build`, then `Azure/static-web-apps-deploy` publishes the prebuilt
@@ -343,7 +347,9 @@ free on the SWA free plan.
    > `az webpubsub hub update --name fnppokerwps -g planning-poker --hub-name fnp --allow-anonymous false --event-handler "url-template=https://<swa-host>/api/pubsub/events" "system-event=connected" "system-event=disconnected"`.
 2. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**
    named `AZURE_STATIC_WEB_APPS_API_TOKEN` with that token as the value
-   (do **not** commit the token).
+   (do **not** commit the token). Add `COSMOS_TABLE_CONNECTION_STRING` as a second
+   repository secret so the post-deploy `seed_rooms_job` can repair/seed rooms
+   (`scripts/ensure-room.ts`); the job skips itself when the secret is absent.
 3. Push to `master`. `.github/workflows/azure-static-web-apps.yml` runs
    `npm ci && npm run build` (typecheck + bundle both sides) and deploys
    `dist/frontend` + `api` via `Azure/static-web-apps-deploy`.
@@ -359,7 +365,15 @@ The SWA **Free** plan (2026) includes the managed Functions API (1M executions/m
 100 GB bandwidth/mo and 3 preview environments. Web PubSub F1 caps at 20 concurrent
 connections / 20k messages/day, and Cosmos free tier at 1000 RU/s / 25 GB — a small
 squad room stays comfortably inside all of them. Rooms expire after `ROOM_EXPIRY_HOURS`
-of inactivity (default 24h), keeping Cosmos usage tiny.
+(default 720h = 30 days), and the expiry is refreshed whenever the facilitator
+re-enters, keeping Cosmos usage tiny.
+
+**Seeding rooms after deploy:** `scripts/ensure-room.ts` can create or repair a room
+and set a named facilitator (defaults to `Z58WPJ` / `Sian`). It is idempotent — a
+`migrations` marker row stops it from re-applying on later deploys — and is run by
+the `seed_rooms_job` in the GitHub workflow after the deploy succeeds, using the
+`COSMOS_TABLE_CONNECTION_STRING` repository secret. Run it manually with
+`npm run seed:room` (set `SEED_FORCE=1` to re-apply).
 
 ### Phase 3 (only if it grows past free caps)
 

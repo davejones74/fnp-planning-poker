@@ -138,13 +138,65 @@ describe("RoomService - join room", () => {
   it("expires rooms after the configured lifetime", async () => {
     const h = makeHarness();
     const { code } = await roomWithTwo(h);
-    h.clock.advance(25 * 3_600_000); // 25 hours
+    h.clock.advance(31 * 24 * 3_600_000); // just over the default 30 days
     await assert.rejects(h.service.getRoom(code), (err: unknown) => {
       const e = err as ApiError;
       return e instanceof ApiError && e.code === "ROOM_EXPIRED" && e.status === 404;
     });
     const room = await h.repository.get(code);
     assert.equal(room, undefined, "expired room should be removed from storage");
+  });
+
+  it("extends expiry when the facilitator re-enters, but not for other participants", async () => {
+    const h = makeHarness(undefined, { roomExpiryHours: 24 });
+    const { code, facilitatorId, joinerId } = await roomWithTwo(h);
+    const created = await h.repository.get(code);
+    assert.ok(created, "room exists");
+    // The in-memory repository returns the live object, so snapshot the string.
+    const createdExpiry = created.expiresAt;
+
+    h.clock.advance(20 * 3_600_000);
+    await h.service.getRoom(code, joinerId);
+    let stored = await h.repository.get(code);
+    assert.equal(
+      stored?.expiresAt,
+      createdExpiry,
+      "a normal participant must not extend the room",
+    );
+
+    await h.service.getRoom(code, facilitatorId);
+    stored = await h.repository.get(code);
+    assert.notEqual(
+      stored?.expiresAt,
+      createdExpiry,
+      "opening the room as facilitator extends the expiry",
+    );
+    const extendedExpiry = stored?.expiresAt;
+
+    h.clock.advance(3 * 3_600_000);
+    await h.service.getRoom(code, joinerId);
+    stored = await h.repository.get(code);
+    assert.equal(stored?.expiresAt, extendedExpiry, "expiry stays put for others");
+  });
+
+  it("lets a same-name join inherit a persisted facilitator name", async () => {
+    const h = makeHarness();
+    const { room, participant } = await h.service.createRoom("Sian");
+    room.participants.delete(participant.id);
+    await h.repository.update(room);
+
+    const joined = await h.service.joinRoom(room.code, "sian");
+    assert.equal(joined.participant.isFacilitator, true);
+    assert.equal(joined.room.facilitatorId, joined.participant.id);
+    assert.equal(joined.room.facilitatorName, "sian");
+  });
+
+  it("keeps the facilitator name in sync when the role is promoted", async () => {
+    const h = makeHarness();
+    const { code, facilitatorId } = await roomWithTwo(h);
+    await h.service.leaveRoom(code, facilitatorId);
+    const room = await h.repository.get(code);
+    assert.equal(room?.facilitatorName, "Alice");
   });
 });
 

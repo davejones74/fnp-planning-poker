@@ -37,6 +37,8 @@ export interface JoinResult {
 }
 
 const MILLIS_PER_HOUR = 3_600_000;
+/** Default room lifetime: 30 days, refreshed when the facilitator returns. */
+const ROOM_EXPIRY_HOURS = 30 * 24;
 
 function connectionKey(roomCode: string, participantId: string): string {
   return `${roomCode}:${participantId}`;
@@ -74,9 +76,9 @@ export class RoomService {
     this.repo = repo;
     this.pubsub = pubsub;
     this.deck = options.deck ?? DECKS.fibonacci;
-    const hours = options.roomExpiryHours ?? 24;
+    const hours = options.roomExpiryHours ?? ROOM_EXPIRY_HOURS;
     this.roomExpiryMs =
-      (Number.isFinite(hours) && hours > 0 ? hours : 24) * MILLIS_PER_HOUR;
+      (Number.isFinite(hours) && hours > 0 ? hours : ROOM_EXPIRY_HOURS) * MILLIS_PER_HOUR;
     const graceMinutes = options.participantOfflineGraceMinutes ?? 60;
     this.participantOfflineGraceMs =
       (Number.isFinite(graceMinutes) && graceMinutes > 0 ? graceMinutes : 60) * 60_000;
@@ -106,6 +108,7 @@ export class RoomService {
       createdAt: nowIso,
       expiresAt: this.expiresAt(),
       facilitatorId: facilitator.id,
+      facilitatorName: facilitator.displayName,
       participants: new Map([[facilitator.id, facilitator]]),
       currentRound: round,
       deck: [...this.deck],
@@ -130,10 +133,15 @@ export class RoomService {
         // Resuming after an offline spell must put the participant back online
         // for everyone else; otherwise rejoiners stay red until a socket event.
         existing.lastSeenAt = nowIso;
-        if (!existing.connected) {
+        const wasOffline = !existing.connected;
+        if (wasOffline) {
           existing.connected = true;
           delete existing.offlineAt;
-          await this.persist(room);
+        }
+        // Returning as the facilitator puts the room's expiry back a full month.
+        const extended = this.extendExpiryForFacilitator(room, existing.id);
+        if (wasOffline || extended) await this.persist(room);
+        if (wasOffline) {
           await this.pubsub.publishToRoom(room.code, {
             type: "participant.updated",
             roomCode: room.code,
@@ -168,6 +176,22 @@ export class RoomService {
       replacingFacilitator = replacedParticipant.isFacilitator;
       room.participants.delete(replacedParticipant.id);
       this.connections.delete(connectionKey(room.code, replacedParticipant.id));
+    } else if (this.matchesPersistedFacilitator(room, displayName)) {
+      // The facilitator's participant record can be gone (expired/kicked) while
+      // the persisted facilitator name remains. A same-name join inherits the
+      // role only when no live facilitator is holding it.
+      const currentFacilitator = room.facilitatorId
+        ? room.participants.get(room.facilitatorId)
+        : undefined;
+      if (currentFacilitator?.connected) {
+        throw new ApiError(
+          "NAME_TAKEN",
+          409,
+          `"${displayName}" is already in this room as the facilitator.`,
+        );
+      }
+      if (currentFacilitator) currentFacilitator.isFacilitator = false;
+      replacingFacilitator = true;
     }
 
     if (room.participants.size >= MAX_ROOM_PARTICIPANTS) {
@@ -187,7 +211,12 @@ export class RoomService {
       connected: true,
     };
     room.participants.set(participant.id, participant);
-    if (replacingFacilitator) room.facilitatorId = participant.id;
+    if (replacingFacilitator) {
+      room.facilitatorId = participant.id;
+      room.facilitatorName = participant.displayName;
+      // A returning facilitator keeps the room alive for another month.
+      room.expiresAt = this.expiresAt();
+    }
     await this.persist(room);
 
     if (replacedParticipant) {
@@ -218,6 +247,8 @@ export class RoomService {
 
   async getRoom(code: string, viewerId?: unknown): Promise<PublicRoom> {
     const room = await this.loadRoom(code);
+    // Opening the room as the facilitator is "entering" it: renew the month.
+    this.extendExpiryForFacilitator(room, typeof viewerId === "string" ? viewerId : undefined);
     await this.persist(room);
     return toPublicRoom(room, typeof viewerId === "string" ? viewerId : undefined);
   }
@@ -230,6 +261,7 @@ export class RoomService {
 
   async getParticipant(code: string, participantId: string): Promise<Participant> {
     const room = await this.loadRoom(code);
+    this.extendExpiryForFacilitator(room, participantId);
     await this.persist(room);
     return this.requireParticipant(room, participantId);
   }
@@ -249,6 +281,8 @@ export class RoomService {
       participant.connected = true;
       delete participant.offlineAt;
     }
+    // A facilitator with a live tab keeps the room from expiring mid-session.
+    this.extendExpiryForFacilitator(room, participantId);
     await this.persist(room);
     if (wasOffline) {
       await this.pubsub.publishToRoom(room.code, {
@@ -624,10 +658,15 @@ export class RoomService {
     const next = candidates.find((p) => p.connected) ?? candidates[0];
     if (!next) {
       room.facilitatorId = "";
+      room.facilitatorName = "";
       return;
     }
-    next.isFacilitator = true;
+    // Exactly one facilitator at a time.
+    for (const participant of room.participants.values()) {
+      participant.isFacilitator = participant.id === next.id;
+    }
     room.facilitatorId = next.id;
+    room.facilitatorName = next.displayName;
     // Notify clients of the new facilitator
     this.pubsub.publishToRoom(room.code, {
       type: "participant.updated",
@@ -658,10 +697,16 @@ export class RoomService {
     const firstConnection = set.size === 0;
     set.add(connectionId);
     participant.lastSeenAt = this.iso(this.now());
-    if (firstConnection || !participant.connected) {
+    const cameOnline = !participant.connected;
+    if (cameOnline) {
       participant.connected = true;
       delete participant.offlineAt;
+    }
+    const extended = this.extendExpiryForFacilitator(room, participantId);
+    if (firstConnection || cameOnline || extended) {
       await this.persist(room);
+    }
+    if (firstConnection || cameOnline) {
       await this.pubsub.publishToRoom(room.code, {
         type: "participant.updated",
         roomCode: room.code,
@@ -733,7 +778,8 @@ export class RoomService {
         "This room has expired and has been removed.",
       );
     }
-    this.touch(room);
+    // Expiry is no longer extended on every read; see
+    // extendExpiryForFacilitator() and the facilitator entry points.
     const flagged = this.markStaleOffline(room);
     if (flagged.length > 0) await this.persist(room);
     return room;
@@ -981,8 +1027,22 @@ export class RoomService {
     });
   }
 
-  private touch(room: Room): void {
+  /**
+   * Pushes the room's expiry out by the configured lifetime when the given
+   * participant is its facilitator. Any other participant's activity does not
+   * keep the room alive. Returns true when the expiry changed.
+   */
+  private extendExpiryForFacilitator(room: Room, participantId?: string): boolean {
+    if (!participantId) return false;
+    const participant = room.participants.get(participantId);
+    if (!participant?.isFacilitator) return false;
     room.expiresAt = this.expiresAt();
+    return true;
+  }
+
+  private matchesPersistedFacilitator(room: Room, displayName: string): boolean {
+    const persisted = normalizeName(room.facilitatorName ?? "");
+    return persisted.length > 0 && persisted === normalizeName(displayName);
   }
 
   private expiresAt(): string {
