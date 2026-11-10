@@ -14,7 +14,8 @@ describe("RoomService - create room", () => {
     }
     assert.equal(room.participants.size, 1);
     assert.equal(room.currentRound.status, "voting");
-    assert.equal(room.deck.length, 11);
+    assert.equal(room.deckId, "fibonacci");
+    assert.equal(room.deck.length, 10);
   });
 
   it("makes the creator the facilitator", async () => {
@@ -235,7 +236,7 @@ describe("configuration sanity", () => {
     } as NodeJS.ProcessEnv);
     assert.equal(config.roomExpiryHours, 12);
     assert.deepEqual(config.adminUsers, ["dave@x.com", "alice@x.com"]);
-    assert.equal(config.defaultDeck.length, 11);
+    assert.equal(config.defaultDeckId, "fibonacci");
   });
 
   it("reads the Jira host and project key for the import links", async () => {

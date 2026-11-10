@@ -9,6 +9,7 @@ import { joinRoom } from "./functions/joinRoom.ts";
 import { vote } from "./functions/vote.ts";
 import { reveal } from "./functions/reveal.ts";
 import { newRound } from "./functions/newRound.ts";
+import { switchDeck } from "./functions/switchDeck.ts";
 import { updateStory } from "./functions/updateStory.ts";
 import { importStories } from "./functions/importStories.ts";
 import { startStoryEstimation } from "./functions/startStoryEstimation.ts";
@@ -135,6 +136,13 @@ app.http("newRound", {
   authLevel: "anonymous",
   route: "rooms/{code}/round",
   handler: toAzure(wrap(newRound)),
+});
+
+app.http("switchDeck", {
+  methods: ["POST"],
+  authLevel: "anonymous",
+  route: "rooms/{code}/deck",
+  handler: toAzure(wrap(switchDeck)),
 });
 
 app.http("updateStory", {

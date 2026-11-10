@@ -1,5 +1,6 @@
 import type {
   CardValue,
+  DeckId,
   Participant,
   PublicRoom,
   Room,
@@ -7,7 +8,12 @@ import type {
   SessionStory,
   Story,
 } from "../../../shared/types.ts";
-import { DECKS } from "../../../shared/decks.ts";
+import {
+  DECKS,
+  DEFAULT_DECK_ID,
+  deckById,
+  type DeckDefinition,
+} from "../../../shared/decks.ts";
 import { isValidRoomCode } from "../../../shared/validation.ts";
 import {
   DISPLAY_NAME_MAX,
@@ -26,7 +32,7 @@ import type { PubSubService } from "./PubSubService.ts";
 import type { RoomRepository } from "./RoomRepository.ts";
 
 export interface RoomServiceOptions {
-  deck?: CardValue[];
+  deckId?: DeckId;
   roomExpiryHours?: number;
   participantOfflineGraceMinutes?: number;
 }
@@ -56,7 +62,7 @@ interface StaleEntry {
 }
 
 export class RoomService {
-  private readonly deck: readonly CardValue[];
+  private readonly defaultDeckId: DeckId;
   private readonly roomExpiryMs: number;
   private readonly participantOfflineGraceMs: number;
 
@@ -75,7 +81,7 @@ export class RoomService {
   ) {
     this.repo = repo;
     this.pubsub = pubsub;
-    this.deck = options.deck ?? DECKS.fibonacci;
+    this.defaultDeckId = deckById(options.deckId)?.id ?? DEFAULT_DECK_ID;
     const hours = options.roomExpiryHours ?? ROOM_EXPIRY_HOURS;
     this.roomExpiryMs =
       (Number.isFinite(hours) && hours > 0 ? hours : ROOM_EXPIRY_HOURS) * MILLIS_PER_HOUR;
@@ -102,6 +108,7 @@ export class RoomService {
       status: "voting",
       startedAt: nowIso,
     };
+    const deck = DECKS[this.defaultDeckId] as DeckDefinition;
     const room: Room = {
       id: generateId("room"),
       code,
@@ -111,7 +118,8 @@ export class RoomService {
       facilitatorName: facilitator.displayName,
       participants: new Map([[facilitator.id, facilitator]]),
       currentRound: round,
-      deck: [...this.deck],
+      deckId: deck.id,
+      deck: [...deck.cards],
       stories: [],
     };
     await this.repo.create(room);
@@ -301,6 +309,20 @@ export class RoomService {
     const room = await this.loadRoom(code);
     const participant = this.requireParticipant(room, participantId);
     this.requireVoting(room.currentRound);
+
+    // `null` clears an accidental selection while the round is still open.
+    if (rawCard === null) {
+      delete participant.selectedCard;
+      await this.persist(room);
+      await this.pubsub.publishToRoom(room.code, {
+        type: "card.selected",
+        roomCode: room.code,
+        participantId,
+        hasSelected: false,
+      });
+      return;
+    }
+
     if (typeof rawCard !== "string" || !room.deck.includes(rawCard as CardValue)) {
       throw new ApiError("INVALID_CARD", 400, "Unknown card value for this deck.");
     }
@@ -313,6 +335,54 @@ export class RoomService {
       participantId,
       hasSelected: true,
     });
+  }
+
+  /**
+   * Switches the room's scoring system. Facilitator-only. Existing selections
+   * belong to the old scale, so a fresh voting round starts and everyone votes
+   * again; the active story is carried over.
+   */
+  async switchDeck(
+    code: string,
+    participantId: string,
+    rawDeckId: unknown,
+  ): Promise<{ room: Room; round: Round; deck: DeckDefinition }> {
+    const room = await this.loadRoom(code);
+    this.requireFacilitator(room, participantId);
+    const deck = deckById(rawDeckId);
+    if (!deck) {
+      throw new ApiError("INVALID_DECK", 400, "Unknown estimation deck.");
+    }
+    if (
+      room.deckId === deck.id &&
+      room.deck.length === deck.cards.length &&
+      room.deck.every((card, index) => card === deck.cards[index])
+    ) {
+      return { room, round: room.currentRound, deck };
+    }
+
+    room.deckId = deck.id;
+    room.deck = [...deck.cards];
+    const round: Round = {
+      id: generateId("r"),
+      story: room.currentRound.story,
+      status: "voting",
+      startedAt: this.iso(this.now()),
+    };
+    for (const participant of room.participants.values()) {
+      participant.selectedCard = undefined;
+    }
+    room.currentRound = round;
+    await this.persist(room);
+    await this.pubsub.publishToRoom(room.code, {
+      type: "round.started",
+      roomCode: room.code,
+      roundId: round.id,
+      story: round.story,
+      deckId: room.deckId,
+      deck: room.deck,
+    });
+    return { room, round, deck };
   }
 
   async revealCards(code: string, participantId: string): Promise<void> {
@@ -358,6 +428,7 @@ export class RoomService {
       roomCode: room.code,
       roundId: round.id,
       story: round.story,
+      deckId: room.deckId,
       deck: room.deck,
     });
     return { room, round };
@@ -502,6 +573,7 @@ export class RoomService {
       roomCode: room.code,
       roundId: round.id,
       story: round.story,
+      deckId: room.deckId,
       deck: room.deck,
     });
     return { room, round, story: { ...story } };
@@ -552,6 +624,7 @@ export class RoomService {
       type: "round.started",
       roomCode: room.code,
       roundId: round.id,
+      deckId: room.deckId,
       deck: room.deck,
     });
     return { story: { ...story } };

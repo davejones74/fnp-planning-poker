@@ -1,10 +1,15 @@
-import { DECKS } from "../../../shared/decks.ts";
-import type { CardValue } from "../../../shared/types.ts";
+import {
+  DECKS,
+  DEFAULT_DECK_ID,
+  deckById,
+  type DeckDefinition,
+} from "../../../shared/decks.ts";
+import type { DeckId } from "../../../shared/types.ts";
 
 export interface Configuration {
   adminUsers: string[];
   roomExpiryHours: number;
-  defaultDeck: CardValue[];
+  defaultDeckId: DeckId;
   webPubSubConnectionString?: string;
   /** Web PubSub hub name all rooms connect through. */
   webPubSubHub: string;
@@ -29,10 +34,13 @@ export function loadConfiguration(
   const hours = Number(env.ROOM_EXPIRY_HOURS ?? "720");
   const roomExpiryHours = Number.isFinite(hours) && hours > 0 ? hours : 720;
 
-  const requestedDeck = env.DEFAULT_DECK?.trim() || "fandp";
-  const defaultDeck = DECKS[requestedDeck] ?? DECKS.fandp;
-  if (!DECKS[requestedDeck]) {
-    console.warn(`Unknown DEFAULT_DECK "${requestedDeck}", falling back to fandp.`);
+  const requestedDeck = env.DEFAULT_DECK?.trim() || DEFAULT_DECK_ID;
+  const selectedDeck =
+    deckById(requestedDeck) ?? (DECKS[DEFAULT_DECK_ID] as DeckDefinition);
+  if (!deckById(requestedDeck)) {
+    console.warn(
+      `Unknown DEFAULT_DECK "${requestedDeck}", falling back to ${DEFAULT_DECK_ID}.`,
+    );
   }
 
   const graceMinutes = Number(env.PARTICIPANT_OFFLINE_GRACE_MINUTES ?? "60");
@@ -45,7 +53,7 @@ export function loadConfiguration(
       .map((s) => s.trim())
       .filter(Boolean),
     roomExpiryHours,
-    defaultDeck,
+    defaultDeckId: selectedDeck.id,
     webPubSubConnectionString: env.WEB_PUBSUB_CONNECTION_STRING || undefined,
     webPubSubHub: env.WEB_PUBSUB_HUB?.trim() || "fnp",
     cosmosTableConnectionString:

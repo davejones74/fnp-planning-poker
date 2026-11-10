@@ -1,4 +1,5 @@
 import type { CardValue, Participant, Room, Round, SessionStory } from "../../../shared/types.ts";
+import { deckById, inferDeckId } from "../../../shared/decks.ts";
 import type { RoomRepository } from "./RoomRepository.ts";
 
 interface RoomEntity {
@@ -11,6 +12,8 @@ interface RoomEntity {
   facilitatorId: string;
   /** Missing on rows written before the facilitator name was persisted. */
   facilitatorName?: string;
+  /** Missing on rows written before deck switching existed. */
+  deckId?: string;
   deck: string;
   currentRound: string;
   participants: string;
@@ -40,6 +43,7 @@ export function toEntity(room: Room): RoomEntity {
     expiresAt: room.expiresAt,
     facilitatorId: room.facilitatorId,
     facilitatorName: room.facilitatorName,
+    deckId: room.deckId,
     deck: JSON.stringify(room.deck),
     currentRound: JSON.stringify(room.currentRound),
     participants: JSON.stringify([...room.participants.values()]),
@@ -56,6 +60,7 @@ export function fromEntity(entity: RoomEntity): Room {
   const facilitator =
     participants.get(entity.facilitatorId) ??
     [...participants.values()].find((participant) => participant.isFacilitator);
+  const deck = JSON.parse(entity.deck) as CardValue[];
   const room: Room = {
     id: entity.roomId,
     code: entity.code,
@@ -64,7 +69,9 @@ export function fromEntity(entity: RoomEntity): Room {
     facilitatorId: entity.facilitatorId,
     // Rows written before the column existed derive the name from the roster.
     facilitatorName: entity.facilitatorName ?? facilitator?.displayName ?? "",
-    deck: JSON.parse(entity.deck) as CardValue[],
+    // Rows written before deck switching existed infer it from the card array.
+    deckId: deckById(entity.deckId)?.id ?? inferDeckId(deck),
+    deck,
     currentRound: JSON.parse(entity.currentRound) as Round,
     participants,
     // Rooms persisted before the backlog existed have no `stories` column.

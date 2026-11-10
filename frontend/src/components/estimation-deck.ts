@@ -1,7 +1,9 @@
 import { el, clear, showToast } from "./dom.ts";
 import type { RoomState } from "../state/room-state.ts";
-import type { CardValue, Story } from "../../../shared/types.ts";
+import type { CardValue, DeckId, Story } from "../../../shared/types.ts";
+import { DECKS, deckById } from "../../../shared/decks.ts";
 import { coffeeIcon } from "./icons.ts";
+import { openSizingGuide } from "./deck-guide.ts";
 import { renderVoteChart } from "./vote-chart.ts";
 
 const COFFEE = "coffee";
@@ -40,6 +42,7 @@ export function renderEstimationDeck(
   state: RoomState,
   onVote: (card: string) => Promise<void> | void,
   onRecordEstimate: (estimate: string) => Promise<void> | void,
+  onDeckChange: (deckId: DeckId) => Promise<void> | void,
 ): void {
   clear(root);
 
@@ -48,6 +51,7 @@ export function renderEstimationDeck(
   const container = el("div", { class: "estimation-deck" });
 
   if (room.story) container.append(storyBanner(room.story));
+  container.append(deckToolbar(state, onDeckChange));
 
   if (room.roundStatus === "revealed") {
     container.append(renderVoteChart(room.participants, room.deck));
@@ -59,7 +63,7 @@ export function renderEstimationDeck(
 
   const grid = el("div", { class: "deck-grid" });
 
-  room.deck.forEach((card, index) => {
+  room.deck.forEach((card) => {
     const isSelected = state.myCard === card;
     const button = el("button", {
       type: "button",
@@ -67,6 +71,7 @@ export function renderEstimationDeck(
       disabled: !voting,
       "aria-label": ariaLabel(card),
       "aria-pressed": isSelected ? "true" : "false",
+      title: isSelected ? "Click again to clear your choice" : ariaLabel(card),
     });
     button.append(
       cornerNode(card, "tl"),
@@ -79,16 +84,67 @@ export function renderEstimationDeck(
         void onVote(card);
       });
     }
-    // 5 cards per row; row 2 (XXL, ?, coffee) aligns beneath card 2.
-    const col = index < 5 ? index + 1 : index - 3;
-    const row = index < 5 ? 1 : 2;
-    button.style.gridRow = String(row);
-    button.style.gridColumn = String(col);
     grid.append(button);
   });
 
   container.append(grid);
+  if (voting && state.myCard) {
+    container.append(
+      el("p", {
+        class: "deck-hint",
+        text: "Click your selected card again to clear it.",
+      }),
+    );
+  }
   root.append(container);
+}
+
+function deckToolbar(
+  state: RoomState,
+  onDeckChange: (deckId: DeckId) => Promise<void> | void,
+): HTMLElement {
+  const room = state.room;
+  const activeDeck = deckById(room.deckId);
+  const bar = el("div", { class: "deck-toolbar" });
+  const switcher = el("div", { class: "deck-switch" });
+
+  if (state.isFacilitator()) {
+    const options: DeckId[] = ["fibonacci", "fandp"];
+    for (const id of options) {
+      const deck = DECKS[id];
+      if (!deck) continue;
+      const active = room.deckId === id;
+      const button = el("button", {
+        type: "button",
+        class: "deck-switch-btn" + (active ? " active" : ""),
+        "aria-pressed": active ? "true" : "false",
+        text: deck.label,
+      });
+      button.addEventListener("click", () => {
+        if (active) return;
+        button.disabled = true;
+        void onDeckChange(id);
+      });
+      switcher.append(button);
+    }
+  } else {
+    switcher.append(
+      el("span", {
+        class: "deck-current-label",
+        text: activeDeck?.label ?? "Cards",
+      }),
+    );
+  }
+
+  const guide = el("button", {
+    type: "button",
+    class: "deck-guide-btn",
+    text: "Sizing Guide",
+  });
+  guide.addEventListener("click", () => openSizingGuide(room.deckId));
+
+  bar.append(switcher, guide);
+  return bar;
 }
 
 function storyBanner(story: Story): HTMLElement {

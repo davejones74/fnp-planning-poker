@@ -34,6 +34,7 @@ export function toPublicRoom(room: Room, viewerId?: string): PublicRoom {
     roundId: room.currentRound.id,
     roundStatus: room.currentRound.status,
     story: room.currentRound.story,
+    deckId: room.deckId,
     deck: room.deck,
     participants,
     stories: room.stories.map((story) => ({ ...story })),

@@ -22,6 +22,7 @@ import { joinRoom as joinRoomFn } from "./functions/joinRoom.ts";
 import { vote } from "./functions/vote.ts";
 import { reveal } from "./functions/reveal.ts";
 import { newRound as newRoundFn } from "./functions/newRound.ts";
+import { switchDeck } from "./functions/switchDeck.ts";
 import { updateStory } from "./functions/updateStory.ts";
 import { importStories } from "./functions/importStories.ts";
 import { dismissStories } from "./functions/dismissStories.ts";
@@ -70,6 +71,7 @@ const routes: Route[] = [
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/vote$/, handler: wrap(vote) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/reveal$/, handler: wrap(reveal) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/round$/, handler: wrap(newRoundFn) },
+  { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/deck$/, handler: wrap(switchDeck) },
   { method: "PUT", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/story$/, handler: wrap(updateStory) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/stories\/import$/, handler: wrap(importStories) },
   { method: "POST", pattern: /^\/api\/rooms\/([A-Z0-9]{6})\/stories\/dismiss$/, handler: wrap(dismissStories) },

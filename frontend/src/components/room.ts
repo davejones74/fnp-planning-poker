@@ -215,14 +215,18 @@ async function enterRoom(
     title.textContent = roomTitle(state, code);
 
     renderEstimationDeck(deckRoot, state, async (card) => {
+      const clearing = state.myCard === card;
       try {
-        await roomsApi.vote(code, card);
+        await roomsApi.vote(code, clearing ? null : card);
         const me = state.room.participants.find((p) => p.id === session.participantId);
-        if (me) me.hasSelected = true;
-        state.setMyCard(card);
+        if (me) me.hasSelected = !clearing;
+        state.setMyCard(clearing ? null : card);
         renderAll();
       } catch (err) {
-        showToast("Could not vote: " + format(err), true);
+        showToast(
+          (clearing ? "Could not clear your card: " : "Could not vote: ") + format(err),
+          true,
+        );
       }
     }, async (estimate) => {
       const story = state.room.story;
@@ -235,6 +239,14 @@ async function enterRoom(
         await refresh();
       } catch (err) {
         showToast("Could not record estimate: " + format(err), true);
+      }
+    }, async (deckId) => {
+      try {
+        await roomsApi.switchDeck(code, deckId);
+        await refresh();
+      } catch (err) {
+        showToast("Could not change the scoring system: " + format(err), true);
+        await refresh();
       }
     });
     renderStoryPanel(storyRoot, state, refresh);

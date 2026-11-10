@@ -8,6 +8,7 @@ export type ApiErrorCode =
   | "ROOM_FULL"
   | "NAME_TAKEN"
   | "INVALID_CARD"
+  | "INVALID_DECK"
   | "VOTING_CLOSED"
   | "STORY_NOT_FOUND"
   | "STORY_NOT_ACTIVE"

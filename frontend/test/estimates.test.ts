@@ -42,6 +42,7 @@ describe("estimateRank", () => {
   it("ranks the fibonacci deck numerically", () => {
     assert.equal(estimateRank("0"), 0);
     assert.equal(estimateRank("5"), 5);
+    assert.equal(estimateRank("40"), 40);
     assert.equal(estimateRank("55"), 55);
     assert.ok((estimateRank("8") as number) > (estimateRank("5") as number));
   });

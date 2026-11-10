@@ -16,6 +16,7 @@ function participant(id: string, card: CardValue | null): PublicParticipant {
 }
 
 const FANDP: CardValue[] = ["XS", "S", "M", "L", "XL", "XXL", "?", "coffee"];
+const FIBONACCI: CardValue[] = ["1", "2", "3", "5", "8", "13", "21", "40", "?", "coffee"];
 
 describe("voteCounts", () => {
   it("tallies revealed votes including ? and coffee", () => {
@@ -31,6 +32,22 @@ describe("voteCounts", () => {
     assert.deepEqual(counts, [
       { value: "M", count: 2 },
       { value: "XXL", count: 1 },
+      { value: "?", count: 1 },
+      { value: "coffee", count: 1 },
+    ]);
+  });
+
+  it("tallies the new Fibonacci deck including 40", () => {
+    const members = [
+      participant("a", "40"),
+      participant("b", "8"),
+      participant("c", "8"),
+      participant("d", "?"),
+      participant("e", "coffee"),
+    ];
+    assert.deepEqual(voteCounts(members, FIBONACCI), [
+      { value: "8", count: 2 },
+      { value: "40", count: 1 },
       { value: "?", count: 1 },
       { value: "coffee", count: 1 },
     ]);

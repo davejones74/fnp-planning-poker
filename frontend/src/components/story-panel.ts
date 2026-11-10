@@ -10,6 +10,7 @@ import {
   sessionProgress,
   statusLabel,
 } from "../util/session.ts";
+import { renderDeckGuide } from "./deck-guide.ts";
 
 type TabId = "how" | "todo" | "done";
 
@@ -24,16 +25,6 @@ const KANBAN_URL =
 const FILTER_URL = "https://hmcts.atlassian.net/issues/?filter=18527";
 const GUIDE_URL =
   "https://hmcts.atlassian.net/wiki/spaces/DTSFP/pages/278333270/Estimations#Ticket-T-Shirt-Sizes";
-
-const SIZING: Array<[string, string]> = [
-  ["XS", "0.5–1 day"],
-  ["S", "2–4 days"],
-  ["M", "5–10 days"],
-  ["L", "11–21 days"],
-  ["XL", "22–28 days"],
-  ["XXL", "No day range defined"],
-  ["?", "Unknown — discuss in the room"],
-];
 
 interface PanelUiState {
   tab: TabId;
@@ -207,7 +198,7 @@ export function renderStoryPanel(
 
     const notes = [
       "Stories are imported as a snapshot — the app has no live connection to Jira.",
-      "The backlog is kept for this room's lifetime (rooms expire after 24 hours without activity).",
+      "The backlog is kept for this room's lifetime (rooms expire after 30 days; the facilitator can renew it by re-entering).",
       "Nothing is written back to Jira.",
       "Jira issue links are provided for reference.",
       "Importing stories is optional — Planning Poker works the same without them.",
@@ -234,22 +225,7 @@ export function renderStoryPanel(
     );
     intro.append(tooltipWrap);
 
-    intro.append(el("h4", { class: "story-intro-sub", text: "F&P sizing" }));
-    const sizing = el("table", { class: "sizing-table" });
-    const head = el("thead");
-    const headRow = el("tr");
-    headRow.append(el("th", { text: "Size" }), el("th", { text: "Approx. duration" }));
-    head.append(headRow);
-    sizing.append(head);
-    const body = el("tbody");
-    for (const [size, days] of SIZING) {
-      const row = el("tr");
-      row.append(el("td", { class: "sizing-size", text: size }));
-      row.append(el("td", { text: days }));
-      body.append(row);
-    }
-    sizing.append(body);
-    intro.append(sizing);
+    intro.append(renderDeckGuide(state.room.deckId));
 
     intro.append(el("h4", { class: "story-intro-sub", text: "Useful links" }));
     const links = el("nav", { class: "story-links" });

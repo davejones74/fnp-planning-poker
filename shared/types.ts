@@ -8,6 +8,7 @@ export type CardValue =
   | "13"
   | "21"
   | "34"
+  | "40"
   | "55"
   | "?"
   | "XS"
@@ -17,6 +18,8 @@ export type CardValue =
   | "XL"
   | "XXL"
   | "coffee";
+
+export type DeckId = "fibonacci" | "fandp";
 
 export type RoundStatus = "waiting" | "voting" | "revealed";
 
@@ -90,6 +93,8 @@ export interface Room {
   facilitatorName: string;
   participants: Map<string, Participant>;
   currentRound: Round;
+  /** Which scoring system the room is using. */
+  deckId: DeckId;
   deck: CardValue[];
   /** Session backlog of imported/manual stories (optional workflow). */
   stories: SessionStory[];
@@ -115,6 +120,7 @@ export interface PublicRoom {
   roundId: string;
   roundStatus: RoundStatus;
   story?: Story;
+  deckId: DeckId;
   deck: CardValue[];
   participants: PublicParticipant[];
   stories: SessionStory[];
@@ -187,6 +193,7 @@ export interface RoundStartedEvent {
   roomCode: string;
   roundId: string;
   story?: Story;
+  deckId?: DeckId;
   deck: CardValue[];
 }
 

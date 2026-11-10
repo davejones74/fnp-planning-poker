@@ -66,6 +66,7 @@ jobs:
           COSMOS_TABLE_CONNECTION_STRING: ${{ secrets.COSMOS_TABLE_CONNECTION_STRING }}
           SEED_ROOM_CODE: Z58WPJ
           SEED_FACILITATOR_NAME: Sian
+          SEED_DECK: fibonacci
         run: |
           if [ -z "$COSMOS_TABLE_CONNECTION_STRING" ]; then
             echo "COSMOS_TABLE_CONNECTION_STRING is not configured; skipping room seed."

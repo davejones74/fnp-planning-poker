@@ -1,4 +1,4 @@
-import type { PublicRoom, SessionStory } from "../../../shared/types.ts";
+import type { DeckId, PublicRoom, SessionStory } from "../../../shared/types.ts";
 import { appState } from "../state/app-state.ts";
 
 export class ApiClientError extends Error {
@@ -100,7 +100,7 @@ export const roomsApi = {
     return request<PublicRoom>(`/api/rooms/${code}${query}`);
   },
 
-  vote(code: string, card: string): Promise<{ ok: boolean }> {
+  vote(code: string, card: string | null): Promise<{ ok: boolean }> {
     const participantId = sessionParticipantId(code);
     return request<{ ok: boolean }>(`/api/rooms/${code}/vote`, {
       method: "POST",
@@ -122,6 +122,20 @@ export const roomsApi = {
       method: "POST",
       body: JSON.stringify({ participantId }),
     });
+  },
+
+  switchDeck(
+    code: string,
+    deckId: DeckId,
+  ): Promise<{ ok: boolean; deckId: DeckId; roundId: string }> {
+    const participantId = sessionParticipantId(code);
+    return request<{ ok: boolean; deckId: DeckId; roundId: string }>(
+      `/api/rooms/${code}/deck`,
+      {
+        method: "POST",
+        body: JSON.stringify({ participantId, deckId }),
+      },
+    );
   },
 
   updateStory(code: string, story: StoryPayload): Promise<{ ok: boolean; story: StoryPayload }> {

@@ -25,6 +25,38 @@ describe("RoomService - voting", () => {
     assert.ok(alice && alice.hasSelected);
   });
 
+  it("clears a selection before reveal", async () => {
+    const h = makeHarness();
+    const { code, joinerId } = await roomWithTwo(h);
+    await h.service.selectCard(code, joinerId, "5");
+    await h.service.selectCard(code, joinerId, null);
+
+    const room = await h.service.getRoom(code, joinerId);
+    const alice = room.participants.find((p) => p.id === joinerId);
+    assert.equal(alice?.hasSelected, false);
+    assert.equal(room.self?.selectedCard, null);
+
+    const cleared = h.pubsub
+      .forRoom(code)
+      .filter((event) => event.event.type === "card.selected")
+      .at(-1);
+    assert.ok(cleared);
+    if (cleared.event.type === "card.selected") {
+      assert.equal(cleared.event.hasSelected, false);
+    }
+  });
+
+  it("rejects clearing a card once revealed", async () => {
+    const h = makeHarness();
+    const { code, facilitatorId, joinerId } = await roomWithTwo(h);
+    await h.service.selectCard(code, joinerId, "5");
+    await h.service.revealCards(code, facilitatorId);
+    await assert.rejects(h.service.selectCard(code, joinerId, null), (err: unknown) => {
+      const e = err as ApiError;
+      return e instanceof ApiError && e.code === "VOTING_CLOSED";
+    });
+  });
+
   it("rejects an invalid card value", async () => {
     const h = makeHarness();
     const { code, joinerId } = await roomWithTwo(h);

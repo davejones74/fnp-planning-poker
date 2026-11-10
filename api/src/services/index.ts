@@ -23,7 +23,7 @@ export const realtime = configuration.webPubSubConnectionString
     )
   : new InMemoryPubSubService();
 export const rooms = new RoomService(roomRepository, realtime, {
-  deck: configuration.defaultDeck,
+  deckId: configuration.defaultDeckId,
   roomExpiryHours: configuration.roomExpiryHours,
   participantOfflineGraceMinutes: configuration.participantOfflineGraceMinutes,
 });

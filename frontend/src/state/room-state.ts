@@ -1,4 +1,5 @@
 import type { PublicParticipant, PublicRoom, RoomEvent } from "../../../shared/types.ts";
+import { inferDeckId } from "../../../shared/decks.ts";
 
 export interface RoomIdentity {
   participantId: string;
@@ -38,7 +39,7 @@ export class RoomState {
     return facilitator?.displayName ?? null;
   }
 
-  setMyCard(card: string): void {
+  setMyCard(card: string | null): void {
     this.myCard = card;
   }
 
@@ -90,6 +91,13 @@ export class RoomState {
       case "card.selected": {
         const participant = find(event.participantId);
         if (participant) participant.hasSelected = event.hasSelected;
+        // Another tab of this browser can clear our selection too.
+        if (
+          event.participantId === this.myParticipantId &&
+          !event.hasSelected
+        ) {
+          this.myCard = null;
+        }
         break;
       }
       case "cards.revealed": {
@@ -113,6 +121,8 @@ export class RoomState {
         this.room.roundId = event.roundId;
         this.room.roundStatus = "voting";
         this.room.story = event.story;
+        this.room.deck = event.deck;
+        this.room.deckId = event.deckId ?? inferDeckId(event.deck);
         for (const p of this.room.participants) {
           p.hasSelected = false;
           p.selectedCard = null;

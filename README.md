@@ -66,8 +66,14 @@ Apps (Free plan). See "Deploying to Azure" for the live URL and resource names.
   **Select all / None**) and **Dismissed** to remove them from the session backlog; the
   import caveats (snapshot only, no write-back, room-lifetime backlog) sit behind a
   small **info tooltip** so the guide stays skim-friendly
-- Default deck: **XS, S, M, L, XL, XXL, ?, coffee** (coffee = break; see `shared/decks.ts` for the fibonacci alternative)
-- Participants pick a card; only a ✓ (voted) status is visible to others
+- **Scoring systems:** the facilitator can switch between **Fibonacci**
+  (`1, 2, 3, 5, 8, 13, 21, 40, ?, coffee`, the default) and **T-Shirt Sizes**
+  (`XS, S, M, L, XL, XXL, ?, coffee`). Switching clears the current selections and
+  starts a fresh round; the card grid, legend, pie chart and sizing guide follow
+  the active deck. A **Sizing Guide** button next to the selector opens the same
+  guidance shown in **HOW IT WORKS**
+- Participants pick a card; only a ✓ (voted) status is visible to others. Clicking
+  the selected card again clears it while the round is still open (before reveal)
 - Facilitator reveals the cards; the reveal replaces the deck with a **vote chart** — a
   donut of all vote values (`?` and coffee included) plus a coloured legend with counts
 - **Outlier prompts:** once revealed, the members holding the **lowest** (optimistic)
@@ -157,7 +163,7 @@ run with `node --env-file=.env api/src/server.ts`.
 | `PORT` | `8080` | Local dev server port (Azure Functions ignore this) |
 | `ROOM_EXPIRY_HOURS` | `720` | Room lifetime (30 days); reset whenever the facilitator enters/rejoins |
 | `PARTICIPANT_OFFLINE_GRACE_MINUTES` | `60` | After this long without a presence heartbeat a participant is flagged offline (resets on heartbeat/resume); the roster row is never removed |
-| `DEFAULT_DECK` | `fandp` | Deck key from `shared/decks.ts` (`fandp` = XS…coffee, or `fibonacci`) |
+| `DEFAULT_DECK` | `fibonacci` | Deck key from `shared/decks.ts` (`fibonacci` = 1…40, or `fandp` = T-Shirt Sizes) |
 | `ADMIN_USERS` | empty | Comma-separated identities allowed to administer (Phase 1: informational) |
 | `WEB_PUBSUB_CONNECTION_STRING` | empty | Azure Web PubSub (empty = in-memory) |
 | `WEB_PUBSUB_HUB` | `fnp` | Web PubSub hub name all rooms connect through |
@@ -181,9 +187,10 @@ with the matching HTTP status. Room codes use the alphabet
 | `POST` | `/api/rooms/{code}/join` | `{ displayName, participantId? }` → join, or resume the same participant |
 | `GET` | `/api/rooms/{code}?participantId=` | Public room snapshot; `self` reveals only your own card |
 | `GET` | `/api/rooms/{code}/participants` | Participant list (cards hidden) |
-| `POST` | `/api/rooms/{code}/vote` | `{ participantId, card }` — card must be in the room's deck |
+| `POST` | `/api/rooms/{code}/vote` | `{ participantId, card }` — card must be in the room's deck; `card: null` clears the selection before reveal |
 | `POST` | `/api/rooms/{code}/reveal` | Facilitator-only; publishes `cards.revealed` |
 | `POST` | `/api/rooms/{code}/round` | Facilitator-only; clears selections, new round |
+| `POST` | `/api/rooms/{code}/deck` | Facilitator-only; `{ participantId, deckId }` (`fibonacci` or `fandp`) — switches scoring system, clears votes and starts a fresh round |
 | `PUT` | `/api/rooms/{code}/story` | Facilitator-only; `{ participantId, title, description, key?, url? }` |
 | `POST` | `/api/rooms/{code}/stories/import` | Facilitator-only; `{ participantId, stories: [{ key, title, description, url? }] }` → upserts the backlog and returns `{ imported, duplicatesSkipped, invalidSkipped, limitSkipped, stories }` |
 | `POST` | `/api/rooms/{code}/stories/{key}/start` | Facilitator-only; marks the story `estimating` and starts a voting round carrying it |
@@ -261,8 +268,8 @@ The client connects to the URL from `/api/negotiate` and sends:
 The server binds the socket to the room and starts broadcasting room events:
 `participant.joined`, `participant.left`, `participant.updated` (presence),
 `card.selected` (contains **only** `{ participantId, hasSelected }` — never the card
-value), `cards.revealed` (full selections), `round.started` (carries the current story
-when one is active), `story.updated`, `stories.updated` (full session backlog — the
+value), `cards.revealed` (full selections), `round.started` (carries the current story,
+active deck and deck id), `story.updated`, `stories.updated` (full session backlog — the
 client replaces its list).
 
 ## Security invariants
@@ -373,7 +380,9 @@ and set a named facilitator (defaults to `Z58WPJ` / `Sian`). It is idempotent �
 `migrations` marker row stops it from re-applying on later deploys — and is run by
 the `seed_rooms_job` in the GitHub workflow after the deploy succeeds, using the
 `COSMOS_TABLE_CONNECTION_STRING` repository secret. Run it manually with
-`npm run seed:room` (set `SEED_FORCE=1` to re-apply).
+`npm run seed:room` (set `SEED_FORCE=1` to re-apply). Set `SEED_DECK=fibonacci`
+(or `fandp`) to switch a seeded room's scoring system once; the workflow already does
+this for `Z58WPJ`.
 
 ### Phase 3 (only if it grows past free caps)
 

@@ -62,4 +62,25 @@ describe("CosmosTableRoomRepository - story backlog", () => {
     const restored = fromEntity(entity as never);
     assert.equal(restored.facilitatorName, "Dave");
   });
+
+  it("round-trips the selected scoring system", async () => {
+    const h = makeHarness();
+    const { room, participant } = await h.service.createRoom("Dave");
+    await h.service.switchDeck(room.code, participant.id, "fandp");
+
+    const stored = (await h.repository.get(room.code)) as Room;
+    const restored = fromEntity(toEntity(stored));
+    assert.equal(restored.deckId, "fandp");
+    assert.deepEqual(restored.deck, stored.deck);
+  });
+
+  it("infers the scoring system for rows written before deckId existed", async () => {
+    const h = makeHarness();
+    const { room } = await h.service.createRoom("Dave");
+    const entity = toEntity(room) as unknown as Record<string, unknown>;
+    delete entity.deckId;
+
+    const restored = fromEntity(entity as never);
+    assert.equal(restored.deckId, "fibonacci");
+  });
 });

@@ -483,11 +483,93 @@ button.danger:hover {
   flex-direction: column;
 }
 
+.deck-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.deck-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+}
+
+.deck-switch-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.deck-switch-btn:hover:not(:disabled):not(.active) {
+  color: var(--text);
+}
+
+.deck-switch-btn.active {
+  background: var(--primary);
+  color: #fff;
+  cursor: default;
+}
+
+.deck-switch-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.deck-current-label {
+  padding: 4px 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.deck-guide-btn {
+  padding: 7px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--primary-deep);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.deck-guide-btn:hover,
+.deck-guide-btn:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary);
+  outline: none;
+}
+
+.deck-hint {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 .deck-grid {
-  display: grid;
-  grid-template-columns: repeat(5, var(--card-w));
+  display: flex;
+  flex-wrap: wrap;
   gap: 19px;
   justify-content: center;
+  /* Five cards per row at most; short final rows centre themselves. */
+  max-width: calc(5 * var(--card-w) + 4 * 19px);
+  margin: 0 auto;
 }
 
 /* ---------- Estimation cards ---------- */
@@ -1304,6 +1386,68 @@ button.danger:hover {
   margin: 0;
 }
 
+.deck-guide {
+  margin-top: 4px;
+}
+
+.deck-guide-sub {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.sizing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(10, 16, 24, 0.55);
+}
+
+.sizing-dialog {
+  width: min(680px, 100%);
+  max-height: min(80vh, 760px);
+  overflow: auto;
+  padding: 18px 20px 20px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.sizing-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.sizing-dialog-title {
+  margin: 0;
+  font-size: 17px;
+}
+
+.sizing-dialog-close {
+  padding: 5px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sizing-dialog-close:hover,
+.sizing-dialog-close:focus-visible {
+  border-color: var(--primary);
+  color: var(--text);
+  outline: none;
+}
+
 .sizing-table {
   width: 100%;
   border-collapse: collapse;
@@ -1758,5 +1902,6 @@ button.danger:hover {
   }
   .deck-grid {
     gap: 12px;
+    max-width: calc(5 * var(--card-w) + 4 * 12px);
   }
 }
